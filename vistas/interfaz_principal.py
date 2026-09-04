@@ -206,7 +206,7 @@ class PantallaPrincipal(tk.Frame):
         banner.pack(side="right", padx=20)
         banner.create_text(
             190, 80, fill=GREEN, font=("Arial", 11, "bold"), justify="center",
-            text="🕹️ Banner de ofertas\n(reemplaza con tu propia imagen PNG)"
+            text="Banner de ofertas\n(Colocar imagen aqui)"
         )
 
     # ------------------------------------------------------------------
