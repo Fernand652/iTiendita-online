@@ -86,10 +86,12 @@ class PantallaPrincipal(tk.Frame):
                             hace click en "Añadir al Carro".
     """
 
-    def __init__(self, parent, inventario=None, on_agregar_carro=None):
+    def __init__(self, parent, inventario=None, on_agregar_carro=None, on_ir_admin=None, on_ver_carrito=None):
         super().__init__(parent, bg=BG_DARK)
         self.inventario = inventario if inventario is not None else self._productos_ejemplo()
         self.on_agregar_carro = on_agregar_carro
+        self.on_ir_admin = on_ir_admin
+        self.on_ver_carrito = on_ver_carrito
 
         self._crear_navbar()
         self._crear_hero()
@@ -128,6 +130,10 @@ class PantallaPrincipal(tk.Frame):
         self._link_nav(nav_links, "CATEGORIAS").pack(side="left", padx=8)
         self._link_nav(nav_links, "CONTACTANOS").pack(side="left", padx=8)
 
+        admin_link = self._link_nav(nav_links, "ADMIN")
+        admin_link.pack(side="left", padx=8)
+        admin_link.bind("<Button-1>", lambda e: self.on_ir_admin() if self.on_ir_admin else None)
+
         # Buscador
         buscador_frame = tk.Frame(
             navbar, bg=BG_DARK, highlightbackground=GREEN,
@@ -146,14 +152,22 @@ class PantallaPrincipal(tk.Frame):
         iconos = tk.Frame(navbar, bg=BG_DARK)
         iconos.pack(side="right")
 
-        tk.Label(
+        lbl_carrito = tk.Label(
             iconos, text="🛒", font=("Arial", 13), bg=GRAY_BTN, fg=WHITE,
             padx=12, pady=6, cursor="hand2"
-        ).pack(side="left", padx=4)
-        tk.Label(
+        )
+        lbl_carrito.pack(side="left", padx=4)
+        lbl_carrito.bind("<Button-1>", lambda e: self._abrir_carrito())
+
+        lbl_perfil = tk.Label(
             iconos, text="👤", font=("Arial", 13), bg=GRAY_BTN, fg=WHITE,
             padx=12, pady=6, cursor="hand2"
-        ).pack(side="left", padx=4)
+        )
+        lbl_perfil.pack(side="left", padx=4)
+
+    def _abrir_carrito(self):
+        if self.on_ver_carrito:
+            self.on_ver_carrito()
 
     def _link_nav(self, parent, texto, activo=False):
         return tk.Label(

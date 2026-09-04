@@ -5,14 +5,11 @@ Pantalla de Carrito de Compras de RetroVault.
 
 import tkinter as tk
 try:
+    from estilos import *
+    from inventario import Producto
+except ImportError:  # permite ejecutar este archivo directamente
     from vistas.estilos import *
-    from modelos.producto import Producto
-except ImportError:  # ejecución directa: agrega la raíz del proyecto al path
-    import os as _os
-    import sys as _sys
-    _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
-    from vistas.estilos import *
-    from modelos.producto import Producto
+    from vistas.inventario import Producto
 
 
 class carrito(tk.Frame):
@@ -201,9 +198,9 @@ if __name__ == "__main__":
     )
 
     demo = [
-        {"producto": Producto(1, "Super Mario 64", 19.900, 10, "N64"), "cantidad": 1},
-        {"producto": Producto(2, "The Legend of Zelda", 45.000, 5, "N64"), "cantidad": 2},
-        {"producto": Producto(3, "Game Boy Color", 100.000, 2, "Consolas"), "cantidad": 1}
+        {"producto": Producto(1, "Super Mario 64", 19900, 10, "N64"), "cantidad": 1},
+        {"producto": Producto(2, "The Legend of Zelda", 45000, 5, "N64"), "cantidad": 2},
+        {"producto": Producto(3, "Game Boy Color", 100000, 2, "Consolas"), "cantidad": 1}
     ]
 
     pantalla.actualizar_carrito(demo)
