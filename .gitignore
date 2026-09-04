@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+
+# Distribución / build
+build/
+dist/
+*.egg-info/
+*.egg
+
+# IDEs y editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Proyecto: temporales y backups de CSV
+*.bak
+*.tmp
+*~
+
+# No ignorar datos del proyecto
+!data/*.csv
