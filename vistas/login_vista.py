@@ -4,7 +4,10 @@ Pantalla de inicio de sesión de RetroVault.
 """
 
 import tkinter as tk
-from estilos import *
+try:
+    from vistas.estilos import *
+except ImportError:  # permite ejecutar este archivo directamente
+    from estilos import *
 
 
 class PantallaLogin(tk.Frame):

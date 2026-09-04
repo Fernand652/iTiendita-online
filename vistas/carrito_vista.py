@@ -4,8 +4,15 @@ Pantalla de Carrito de Compras de RetroVault.
 """
 
 import tkinter as tk
-from estilos import *
-from producto import Producto
+try:
+    from vistas.estilos import *
+    from modelos.producto import Producto
+except ImportError:  # ejecución directa: agrega la raíz del proyecto al path
+    import os as _os
+    import sys as _sys
+    _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+    from vistas.estilos import *
+    from modelos.producto import Producto
 
 
 class carrito(tk.Frame):
