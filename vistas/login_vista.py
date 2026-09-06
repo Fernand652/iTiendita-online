@@ -4,10 +4,14 @@ Pantalla de inicio de sesión de RetroVault.
 """
 
 import tkinter as tk
+from tkinter import messagebox
+
 try:
     from vistas.estilos import *
+    from vistas.usuario import GestorUsuarios
 except ImportError:  # permite ejecutar este archivo directamente
     from estilos import *
+    from usuario import GestorUsuarios
 
 
 class PantallaLogin(tk.Frame):
@@ -20,12 +24,15 @@ class PantallaLogin(tk.Frame):
                             CONTINUAR. Recibe el usuario ingresado.
         on_crear_cuenta:   función que se llama al hacer click en
                             "CREAR CUENTA".
+        gestor_usuarios:   instancia de GestorUsuarios para validar
+                            credenciales y permitir registrarse.
     """
 
-    def __init__(self, parent, on_login_exitoso=None, on_crear_cuenta=None):
+    def __init__(self, parent, on_login_exitoso=None, on_crear_cuenta=None, gestor_usuarios=None):
         super().__init__(parent, bg=BG_DARK)
         self.on_login_exitoso = on_login_exitoso
         self.on_crear_cuenta = on_crear_cuenta
+        self.gestor_usuarios = gestor_usuarios if gestor_usuarios is not None else GestorUsuarios()
 
         self._crear_barra_superior()
         self._crear_tarjeta_login()
@@ -121,6 +128,12 @@ class PantallaLogin(tk.Frame):
         crear_cuenta.pack(pady=(15, 0))
         crear_cuenta.bind("<Button-1>", lambda e: self._manejar_crear_cuenta())
 
+        self.label_info = tk.Label(
+            tarjeta, text="", font=FUENTE_BODY,
+            bg=WHITE, fg="#c0392b", wraplength=260
+        )
+        self.label_info.pack(pady=(8, 0))
+
     def _separador_or(self, parent):
         fila = tk.Frame(parent, bg=WHITE)
         fila.pack(fill="x", pady=10)
@@ -168,17 +181,45 @@ class PantallaLogin(tk.Frame):
         password = self.entry_password.get()
 
         if usuario == self.entry_usuario.placeholder or usuario.strip() == "":
-            print("⚠️ Debes ingresar un usuario o correo")
+            self.label_info.config(text="Debes ingresar un usuario o correo")
             return
         if password.strip() == "":
-            print("⚠️ Debes ingresar una contraseña")
+            self.label_info.config(text="Debes ingresar una contraseña")
             return
 
-        print(f"✅ Intentando iniciar sesión con: {usuario}")
-        if self.on_login_exitoso:
-            self.on_login_exitoso(usuario)
+        if self.gestor_usuarios.verificar_usuario(usuario.strip(), password):
+            self.label_info.config(text="")
+            print(f"✅ Sesión iniciada con: {usuario}")
+            if self.on_login_exitoso:
+                self.on_login_exitoso(usuario.strip())
+        else:
+            self.label_info.config(text="Usuario o contraseña incorrectos")
 
     def _manejar_crear_cuenta(self):
+        """Registro rápido: usa los mismos campos del login para crear
+        una cuenta nueva y luego iniciar sesión automáticamente."""
+        nombre = self.entry_usuario.get()
+        password = self.entry_password.get()
+
+        if nombre == self.entry_usuario.placeholder or nombre.strip() == "":
+            self.label_info.config(text="Ingresa un nombre de usuario para crear la cuenta")
+            return
+        if password.strip() == "":
+            self.label_info.config(text="Ingresa una contraseña para crear la cuenta")
+            return
+
+        nuevo = self.gestor_usuarios.registrar_usuario(nombre.strip(), password)
+        if nuevo is None:
+            self.label_info.config(text="Ese usuario ya existe o los datos no son válidos")
+            return
+
+        self.label_info.config(text="")
+        print(f"✅ Cuenta creada: {nuevo.nombre}")
+        messagebox.showinfo("Cuenta creada", f"¡Cuenta '{nuevo.nombre}' creada con éxito!")
+        if self.on_login_exitoso:
+            self.on_login_exitoso(nuevo.nombre)
+
+    def _manejar_crear_cuenta_viejo(self):
         print("Ir a pantalla de crear cuenta")
         if self.on_crear_cuenta:
             self.on_crear_cuenta()
