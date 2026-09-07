@@ -1,6 +1,6 @@
 """
 interfaz_principal.py
-Pantalla principal (home) de RetroVault: navbar, banner y catálogo.
+Pantalla principal (home) de RetroVault: navbar, banner y catalogo.
 
 Para probar SOLO esta pantalla, ejecuta:
     python interfaz_principal.py
@@ -12,7 +12,7 @@ from estilos import *
 
 class TarjetaProducto(tk.Frame):
     """
-    Una tarjeta individual de producto dentro del catálogo.
+    Una tarjeta individual de producto dentro del catalogo.
 
     Recibe un objeto "producto" con atributos .nombre, .precio,
     .categoria (y opcionalmente .stock) -> es 100% compatible con
@@ -27,9 +27,9 @@ class TarjetaProducto(tk.Frame):
         self._construir()
 
     def _construir(self):
-        # Placeholder de imagen: NO se generan imágenes de personajes
+        # Placeholder de imagen: NO se generan imagenes de personajes
         # con derechos de autor (Mario, Zelda, etc.). Reemplaza esto
-        # por tu propia imagen -> ver nota de PhotoImage más abajo.
+        # por tu propia imagen -> ver nota de PhotoImage mas abajo.
         imagen = tk.Canvas(self, width=190, height=140, bg="#e4e4e4", highlightthickness=0)
         imagen.pack()
         imagen.create_text(95, 70, text="🎮", font=("Arial", 36))
@@ -50,7 +50,7 @@ class TarjetaProducto(tk.Frame):
             bg=DARK_CARD, fg=WHITE
         ).pack(anchor="w", pady=(6, 12))
 
-        # Bono: si el producto está sin stock, deshabilita el botón.
+        # Bono: si el producto esta sin stock, deshabilita el boton.
         # Esto conecta directo con el atributo stock que ya manejas
         # en el Item 1 (CRUD) y el Item 3 (menor stock por categoría).
         sin_stock = getattr(self.producto, "stock", 1) <= 0
@@ -77,13 +77,13 @@ class PantallaPrincipal(tk.Frame):
     """
     Pantalla principal / home de la tienda.
 
-    Parámetros:
+    Parametros:
         inventario:        lista de objetos Producto a mostrar.
-                            Si no se entrega, se usan productos de
-                            ejemplo (para poder probar esta pantalla
-                            sola, sin el resto del proyecto).
+                           Si no se entrega, se usan productos de
+                           ejemplo (para poder probar esta pantalla
+                           sola, sin el resto del proyecto).
         on_agregar_carro:  función que se llama cuando el usuario
-                            hace click en "Añadir al Carro".
+                           hace click en "Añadir al Carro".
     """
 
     def __init__(self, parent, inventario=None, on_agregar_carro=None, on_ir_admin=None, on_ver_carrito=None):
@@ -100,21 +100,20 @@ class PantallaPrincipal(tk.Frame):
     def _productos_ejemplo(self):
         """Productos de ejemplo, solo para poder probar esta pantalla sola."""
         class ProductoSimple:
-            def __init__(self, nombre, precio, categoria, stock=10):
+            def __init__(self, id, nombre, precio, categoria, stock=10):
+                self.id = id
                 self.nombre = nombre
                 self.precio = precio
                 self.categoria = categoria
                 self.stock = stock
 
         return [
-            ProductoSimple("Super Nintendo", 149990, "Consolas", stock=4),
-            ProductoSimple("The Legend of Zelda: Ocarina of Time", 89990, "Videojuegos", stock=12),
-            ProductoSimple("Super Mario 64", 99990, "Videojuegos", stock=0),  # ejemplo sin stock
+            ProductoSimple(1, "Super Nintendo", 149990, "Consolas", stock=4),
+            ProductoSimple(2, "The Legend of Zelda: Ocarina of Time", 89990, "Videojuegos", stock=12),
+            ProductoSimple(3, "Super Mario 64", 99990, "Videojuegos", stock=0),  # ejemplo sin stock
         ]
 
-    # ------------------------------------------------------------------
     # NAVBAR
-    # ------------------------------------------------------------------
     def _crear_navbar(self):
         navbar = tk.Frame(self, bg=BG_DARK)
         navbar.pack(fill="x", padx=40, pady=20)
@@ -134,19 +133,24 @@ class PantallaPrincipal(tk.Frame):
         admin_link.pack(side="left", padx=8)
         admin_link.bind("<Button-1>", lambda e: self.on_ir_admin() if self.on_ir_admin else None)
 
-        # Buscador
+        # Buscador con eventos de placeholder y filtrado
         buscador_frame = tk.Frame(
             navbar, bg=BG_DARK, highlightbackground=GREEN,
             highlightcolor=GREEN, highlightthickness=1
         )
         buscador_frame.pack(side="left", padx=20)
 
-        buscador = tk.Entry(
+        self.buscador = tk.Entry(
             buscador_frame, bg=BG_DARK, fg=GRAY_TEXT, relief="flat",
             insertbackground=WHITE, width=22, bd=6
         )
-        buscador.insert(0, "Search")
-        buscador.pack(side="left", ipady=4)
+        self.buscador.insert(0, "Search")
+        self.buscador.pack(side="left", ipady=4)
+
+        # Eventos para controlar el borrado automático y la búsqueda
+        self.buscador.bind("<FocusIn>", self._on_focus_in)
+        self.buscador.bind("<FocusOut>", self._on_focus_out)
+        self.buscador.bind("<KeyRelease>", lambda e: self._filtrar_catalogo())
 
         # Iconos derecha (carrito / perfil)
         iconos = tk.Frame(navbar, bg=BG_DARK)
@@ -165,6 +169,19 @@ class PantallaPrincipal(tk.Frame):
         )
         lbl_perfil.pack(side="left", padx=4)
 
+    def _on_focus_in(self, event):
+        """Borra 'Search' cuando el usuario hace clic dentro."""
+        if self.buscador.get() == "Search":
+            self.buscador.delete(0, tk.END)
+            self.buscador.config(fg=WHITE)
+
+    def _on_focus_out(self, event):
+        """Restaura 'Search' si la caja queda vacia al salir de ella."""
+        if not self.buscador.get().strip():
+            self.buscador.insert(0, "Search")
+            self.buscador.config(fg=GRAY_TEXT)
+            self._filtrar_catalogo()
+
     def _abrir_carrito(self):
         if self.on_ver_carrito:
             self.on_ver_carrito()
@@ -175,9 +192,7 @@ class PantallaPrincipal(tk.Frame):
             bg=BG_DARK, fg=WHITE if activo else GRAY_TEXT, cursor="hand2"
         )
 
-    # ------------------------------------------------------------------
     # HERO / BANNER
-    # ------------------------------------------------------------------
     def _crear_hero(self):
         hero = tk.Frame(self, bg=BG_DARK)
         hero.pack(fill="x", padx=60, pady=20)
@@ -209,24 +224,40 @@ class PantallaPrincipal(tk.Frame):
             text="Banner de ofertas\n(Colocar imagen aqui)"
         )
 
-    # ------------------------------------------------------------------
-    # CATÁLOGO DE PRODUCTOS
-    # ------------------------------------------------------------------
+    # CATALOGO DE PRODUCTOS
     def _crear_catalogo(self):
         contenedor = tk.Frame(self, bg=DARK_CARD)
         contenedor.pack(fill="both", expand=True, padx=60, pady=20)
 
-        grid = tk.Frame(contenedor, bg=DARK_CARD)
-        grid.pack(padx=20, pady=20)
+        self.grid_catalogo = tk.Frame(contenedor, bg=DARK_CARD)
+        self.grid_catalogo.pack(padx=20, pady=20)
 
-        for i, producto in enumerate(self.inventario):
-            tarjeta = TarjetaProducto(grid, producto, on_agregar_carro=self.on_agregar_carro)
+        self._renderizar_tarjetas(self.inventario)
+
+    def _renderizar_tarjetas(self, productos):
+        for widget in self.grid_catalogo.winfo_children():
+            widget.destroy()
+
+        for i, producto in enumerate(productos):
+            tarjeta = TarjetaProducto(self.grid_catalogo, producto, on_agregar_carro=self.on_agregar_carro)
             tarjeta.grid(row=0, column=i, padx=12)
 
+    def _filtrar_catalogo(self):
+        texto = self.buscador.get().strip()
 
-# ==============================================================================
+        if not texto or texto == "Search":
+            self._renderizar_tarjetas(self.inventario)
+            return
+
+        resultados = []
+        for p in self.inventario:
+            id_prod = str(getattr(p, "id", ""))
+            if texto == id_prod or texto.lower() in p.nombre.lower():
+                resultados.append(p)
+
+        self._renderizar_tarjetas(resultados)
+
 # PRUEBA INDEPENDIENTE
-# ==============================================================================
 if __name__ == "__main__":
     root = tk.Tk()
     root.title("RetroVault - Inicio")
