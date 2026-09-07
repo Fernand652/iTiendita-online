@@ -8,8 +8,10 @@ Para probar SOLO esta pantalla, ejecuta:
     python interfaz_admin.py
 """
 
+import os
+import shutil
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 from estilos import *
 from inventario import Inventario
 

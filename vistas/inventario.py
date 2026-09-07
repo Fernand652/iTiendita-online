@@ -1,10 +1,6 @@
 """
 inventario.py
 Clases Producto e Inventario -- la fuente única de datos del catálogo.
-
-Junta todo lo que ya tenías: el CRUD del Item 1, los cálculos del
-Item 3, y persistencia en JSON (Item 2), corregido y listo para
-conectarse directo con la interfaz gráfica.
 """
 
 import json
@@ -14,24 +10,33 @@ import os
 class Producto:
     """Representa un producto del catálogo."""
 
-    def __init__(self, id, nombre, precio, stock, categoria):
+    def __init__(self, id, nombre, precio, stock, categoria, imagen=None):
         self.id = id
         self.nombre = nombre
         self.precio = precio
         self.stock = stock
         self.categoria = categoria
+        self.imagen = imagen  # ruta relativa a un archivo PNG, o None si no tiene
 
     def to_dict(self):
         """Convierte el producto a diccionario (para guardar en JSON)."""
         return {
             "id": self.id, "nombre": self.nombre, "precio": self.precio,
-            "stock": self.stock, "categoria": self.categoria,
+            "stock": self.stock, "categoria": self.categoria, "imagen": self.imagen,
         }
 
     @classmethod
     def from_dict(cls, datos):
-        """Crea un Producto a partir de un diccionario (al leer el JSON)."""
-        return cls(datos["id"], datos["nombre"], datos["precio"], datos["stock"], datos["categoria"])
+        """
+        Crea un Producto a partir de un diccionario (al leer el JSON).
+        Usa .get("imagen") en vez de ["imagen"] para que los productos
+        que ya tenías guardados ANTES de esta actualización (sin ese
+        campo) se sigan cargando sin error -- simplemente sin imagen.
+        """
+        return cls(
+            datos["id"], datos["nombre"], datos["precio"], datos["stock"],
+            datos["categoria"], datos.get("imagen")
+        )
 
     def __str__(self):
         return f"[{self.id}] {self.nombre} | ${self.precio} | Stock: {self.stock} | {self.categoria}"
@@ -84,8 +89,8 @@ class Inventario:
     # ------------------------------------------------------------------
     # CRUD (Item 1)
     # ------------------------------------------------------------------
-    def agregar_producto(self, nombre, precio, stock, categoria):
-        nuevo = Producto(self._siguiente_id(), nombre, precio, stock, categoria)
+    def agregar_producto(self, nombre, precio, stock, categoria, imagen=None):
+        nuevo = Producto(self._siguiente_id(), nombre, precio, stock, categoria, imagen)
         self.productos.append(nuevo)
         self._guardar()
         return nuevo
@@ -96,7 +101,7 @@ class Inventario:
                 return p
         return None
 
-    def actualizar_producto(self, id_producto, nombre, precio, stock, categoria):
+    def actualizar_producto(self, id_producto, nombre, precio, stock, categoria, imagen=None):
         producto = self.buscar_por_id(id_producto)
         if producto is None:
             return False
@@ -104,6 +109,7 @@ class Inventario:
         producto.precio = precio
         producto.stock = stock
         producto.categoria = categoria
+        producto.imagen = imagen
         self._guardar()
         return True
 
@@ -158,18 +164,16 @@ if __name__ == "__main__":
     inv = Inventario()
     print("Productos cargados:")
     for p in inv.productos:
-        print(" ", p)
+        print(" ", p, "| imagen:", p.imagen)
 
-    print("\nAgregando un producto nuevo...")
-    nuevo = inv.agregar_producto("Game Boy Color", 59990, 6, "Consolas")
-    print(" ID asignado automáticamente:", nuevo.id)
+    print("\nAgregando un producto CON imagen...")
+    nuevo = inv.agregar_producto("Game Boy Color", 59990, 6, "Consolas", imagen="imagenes/gbc.png")
+    print(" ID asignado:", nuevo.id, "| imagen:", nuevo.imagen)
 
-    print("\nActualizando el stock del producto 1...")
-    inv.actualizar_producto(1, "Super Nintendo", 149990, 2, "Consolas")
-    print(" ", inv.buscar_por_id(1))
+    print("\nCompatibilidad con productos guardados ANTES de tener 'imagen'...")
+    producto_viejo = Producto.from_dict({"id": 99, "nombre": "Test", "precio": 100, "stock": 1, "categoria": "X"})
+    print(" ", producto_viejo, "| imagen:", producto_viejo.imagen)
 
-    print("\nValor total del inventario:", inv.calcular_valor_inventario())
-
-    print("\nEliminando el producto recién creado...")
+    print("\nEliminando el producto de prueba...")
     inv.eliminar_producto(nuevo.id)
     print(" Productos restantes:", [p.nombre for p in inv.productos])
