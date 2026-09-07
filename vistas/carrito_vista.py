@@ -3,22 +3,57 @@ carrito.py
 Pantalla de Carrito de Compras de RetroVault.
 """
 
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import tkinter as tk
 try:
-    from estilos import *
-    from inventario import Producto
-except ImportError:  # permite ejecutar este archivo directamente
     from vistas.estilos import *
-    from vistas.inventario import Producto
+except ImportError:
+    try:
+        from estilos import *
+    except ImportError:
+        from vistas.estilos import *  # último intento
+try:
+    from modelos.producto import Producto
+except ImportError:
+    try:
+        from producto import Producto
+    except ImportError:
+        try:
+            from vistas.producto import Producto
+        except ImportError:
+            Producto = None  # solo para type hints en demo
+
+try:
+    from vistas.toast import mostrar_toast
+except ImportError:
+    try:
+        from toast import mostrar_toast
+    except ImportError:
+        mostrar_toast = None
+
+
+def _toast(parent, mensaje, tipo="error"):
+    if mostrar_toast is None:
+        return
+    try:
+        mostrar_toast(parent, mensaje, tipo=tipo)
+    except Exception:
+        pass
 
 
 class carrito(tk.Frame):
-    def __init__(self, parent, on_volver=None, on_pagar=None, fn_calcular_total=None):
+    def __init__(self, parent, on_volver=None, on_pagar=None, fn_calcular_total=None, usuario_actual=None, on_cerrar_sesion=None):
         super().__init__(parent, bg=BG_DARK)
         self.parent = parent
         self.on_volver = on_volver
         self.on_pagar = on_pagar
         self.fn_calcular_total = fn_calcular_total
+        self.usuario_actual = usuario_actual
+        self.on_cerrar_sesion = on_cerrar_sesion
         self.pack(fill="both", expand=True)
 
         self.lista_actual = []
@@ -40,6 +75,19 @@ class carrito(tk.Frame):
         )
         btn_volver.pack(side="right")
         btn_volver.bind("<Button-1>", lambda e: self.volver())
+
+        btn_salir = tk.Label(
+            barra, text="SALIR", font=FUENTE_NAV,
+            bg=GRAY_BTN, fg=WHITE, padx=15, pady=8, cursor="hand2"
+        )
+        btn_salir.pack(side="right", padx=(0, 10))
+        btn_salir.bind("<Button-1>", lambda e: self._cerrar_sesion())
+
+        nombre = self.usuario_actual or "Invitado"
+        tk.Label(
+            barra, text=f"👤 {nombre}", font=FUENTE_NAV,
+            bg=BG_DARK, fg=GRAY_TEXT, padx=8, pady=8,
+        ).pack(side="right", padx=(0, 10))
 
     # LAYOUT DE 2 COLUMNAS 
     def _crear_interfaz(self):
@@ -75,6 +123,20 @@ class carrito(tk.Frame):
             relief="flat", bd=0, cursor="hand2", command=self.pagar
         ).pack(fill="x", ipady=10)
 
+        self.lbl_mensaje = tk.Label(
+            resumen, text="", font=FUENTE_BODY,
+            bg=DARK_CARD, fg="#ff6b6b", wraplength=270, justify="left"
+        )
+        self.lbl_mensaje.pack(fill="x", pady=(10, 0))
+
+
+    def _mostrar_mensaje(self, msg, tipo="error"):
+        """Error/aviso EN PANTALLA (label Resumen + toast flotante)."""
+        self.lbl_mensaje.config(text=msg)
+        _toast(self, msg, tipo=tipo)
+
+    def _limpiar_mensaje(self):
+        self.lbl_mensaje.config(text="")
 
     # METODOS DE PRODUCTOS PARA AGREGAR, ELIMINAR Y ACTUALIZAR CANTIDADES
     def mostrar_productos(self, items):
@@ -96,7 +158,10 @@ class carrito(tk.Frame):
                 font=FUENTE_TITULO, bg=BG_DARK, fg=GRAY_TEXT
             ).pack(pady=40)
             self.lbl_total.config(text="$0")
+            self._limpiar_mensaje()
             return
+
+        self._limpiar_mensaje()
 
         for elemento in self.lista_actual:
             prod = elemento["producto"]
@@ -104,6 +169,25 @@ class carrito(tk.Frame):
 
             tarjeta = tk.Frame(self.col_izquierda, bg=DARK_CARD, padx=15, pady=15)
             tarjeta.pack(fill="x", pady=6)
+
+            # Miniatura PNG (64x48) si el producto tiene foto, sino nada
+            try:
+                from vistas.interfaz_principal import cargar_png as _cargar_png
+            except ImportError:
+                try:
+                    from interfaz_principal import cargar_png as _cargar_png
+                except ImportError:
+                    _cargar_png = None
+            if _cargar_png is not None:
+                try:
+                    thumb = _cargar_png(getattr(prod, "imagen", None), 64, 48)
+                except Exception:
+                    thumb = None
+                if thumb is not None:
+                    # guardar referencia en el widget para evitar GC
+                    lbl_thumb = tk.Label(tarjeta, image=thumb, bg=DARK_CARD)
+                    lbl_thumb.image = thumb
+                    lbl_thumb.pack(side="left", padx=(0, 12))
 
             # Informacion del producto
             info = tk.Frame(tarjeta, bg=DARK_CARD)
@@ -146,7 +230,7 @@ class carrito(tk.Frame):
             elemento["cantidad"] = nueva
             self.actualizar_carrito(self.lista_actual)
         else:
-            print(f" Stock maximo disponible: {elemento['producto'].stock}")
+            self._mostrar_mensaje(f"Stock máximo disponible: {elemento['producto'].stock}", tipo="error")
 
     def _eliminar_producto(self, elemento):
         if elemento in self.lista_actual:
@@ -167,13 +251,26 @@ class carrito(tk.Frame):
         if self.on_volver:
             self.on_volver()
         else:
-            print("<- Volver a la pantalla anterior")
+            self._mostrar_mensaje("Volver no disponible en vista aislada", tipo="info")
+
+    def _cerrar_sesion(self):
+        if self.on_cerrar_sesion:
+            self.on_cerrar_sesion()
+        else:
+            self._mostrar_mensaje("Cerrar sesión no disponible en vista aislada", tipo="info")
 
     def pagar(self):
+        if not self.lista_actual:
+            self._mostrar_mensaje("Tu carrito está vacío, agrega productos primero", tipo="error")
+            return
         if self.on_pagar:
-            self.on_pagar()
+            self._limpiar_mensaje()
+            _toast(self, "Procediendo al pago…", tipo="exito")
+            self.after(400, self.on_pagar)
         else:
-            print("✅ Procediendo al pago...")
+            total_txt = self.lbl_total.cget("text")
+            self._limpiar_mensaje()
+            _toast(self, f"Pago por {total_txt} ¡Gracias!", tipo="exito")
 
 
 
