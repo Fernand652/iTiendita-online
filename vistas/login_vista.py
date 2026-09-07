@@ -1,43 +1,92 @@
 """
-interfaz_login.py
-Pantalla de inicio de sesión de RetroVault.
+login_vista.py
+Pantalla de inicio de sesión de RetroVault conectada a usuarios.json.
 """
 
+import json
+import os
 import tkinter as tk
 from tkinter import messagebox
 
+# Importación adaptativa de estilos segun la estructura del proyecto
 try:
     from vistas.estilos import *
-    from vistas.usuario import GestorUsuarios
-except ImportError:  # permite ejecutar este archivo directamente
-    from estilos import *
-    from usuario import GestorUsuarios
+except ImportError:
+    try:
+        from estilos import *
+    except ImportError:
+        # Colores y fuentes de respaldo si no se encuentra estilos.py
+        BG_DARK = "#0d1117"
+        WHITE = "#ffffff"
+        BLACK = "#000000"
+        GRAY_BTN = "#21262d"
+        GRAY_INPUT = "#f0f0f0"
+        GRAY_TEXT = "#8b949e"
+        GREEN = "#2ea44f"
+        GREEN_HOVER = "#2c974b"
+        RED_BADGE = "#da3633"
+        FUENTE_LOGO = ("Arial", 16, "bold")
+        FUENTE_TITULO = ("Arial", 18, "bold")
+        FUENTE_NAV = ("Arial", 10, "bold")
+        FUENTE_BODY = ("Arial", 10)
+        FUENTE_BOTON = ("Arial", 10, "bold")
+
+
+class GestorUsuariosJSON:
+    """Clase encargada de leer y validar las credenciales desde usuarios.json."""
+
+    def __init__(self, ruta_json="usuarios.json"):
+        self.ruta_json = ruta_json
+
+    def _cargar_usuarios(self):
+        """Lee el archivo usuarios.json desde la raíz del proyecto."""
+        if not os.path.exists(self.ruta_json):
+            print(f"Advertencia: No se encontro {self.ruta_json}")
+            return []
+        try:
+            with open(self.ruta_json, "r", encoding="utf-8") as archivo:
+                return json.load(archivo)
+        except Exception as e:
+            print(f"Error al cargar {self.ruta_json}: {e}")
+            return []
+
+    def verificar_usuario(self, nombre, password):
+        """Compara el nombre y contraseña con los registros del JSON."""
+        usuarios = self._cargar_usuarios()
+        for u in usuarios:
+            if u.get("nombre") == nombre and u.get("password") == password:
+                return True
+        return False
+
+    def registrar_usuario(self, nombre, password):
+        """Agrega un nuevo usuario al archivo usuarios.json."""
+        usuarios = self._cargar_usuarios()
+        for u in usuarios:
+            if u.get("nombre") == nombre:
+                return None  # El usuario ya existe
+
+        nuevo_usuario = {"nombre": nombre, "password": password}
+        usuarios.append(nuevo_usuario)
+
+        try:
+            with open(self.ruta_json, "w", encoding="utf-8") as archivo:
+                json.dump(usuarios, archivo, indent=2)
+            return nuevo_usuario
+        except Exception as e:
+            print(f"Error al guardar usuario en {self.ruta_json}: {e}")
+            return None
 
 
 class PantallaLogin(tk.Frame):
-    """
-    Pantalla de inicio de sesión.
-
-    Parámetros:
-        parent:            el widget contenedor (root u otro Frame)
-        on_login_exitoso:  función que se llama al hacer click en
-                            CONTINUAR. Recibe el usuario ingresado.
-        on_crear_cuenta:   función que se llama al hacer click en
-                            "CREAR CUENTA".
-        gestor_usuarios:   instancia de GestorUsuarios para validar
-                            credenciales y permitir registrarse.
-    """
-
     def __init__(self, parent, on_login_exitoso=None, on_crear_cuenta=None, gestor_usuarios=None):
         super().__init__(parent, bg=BG_DARK)
         self.on_login_exitoso = on_login_exitoso
         self.on_crear_cuenta = on_crear_cuenta
-        self.gestor_usuarios = gestor_usuarios if gestor_usuarios is not None else GestorUsuarios()
+        self.gestor_usuarios = gestor_usuarios if gestor_usuarios is not None else GestorUsuariosJSON()
 
         self._crear_barra_superior()
         self._crear_tarjeta_login()
 
-    # BARRA SUPERIOR (logo + botones EXPLORAR / CARRITO)
     def _crear_barra_superior(self):
         barra = tk.Frame(self, bg=BG_DARK)
         barra.pack(fill="x", padx=40, pady=25)
@@ -52,7 +101,7 @@ class PantallaLogin(tk.Frame):
 
         self._boton_secundario(
             botones, "EXPLORAR",
-            on_click=lambda: print("Ir a explorar catálogo")
+            on_click=lambda: print("Ir a explorar catalogo")
         ).pack(side="left", padx=5)
 
         self._boton_carrito(botones).pack(side="left", padx=5)
@@ -67,7 +116,6 @@ class PantallaLogin(tk.Frame):
         return btn
 
     def _boton_carrito(self, parent):
-
         contenedor = tk.Frame(parent, bg=GRAY_BTN, cursor="hand2")
 
         lbl = tk.Label(
@@ -84,8 +132,6 @@ class PantallaLogin(tk.Frame):
         badge.bind("<Button-1>", accion)
         return contenedor
 
-    # TARJETA DE LOGIN 
-
     def _crear_tarjeta_login(self):
         contenedor = tk.Frame(self, bg=BG_DARK)
         contenedor.pack(expand=True)
@@ -94,20 +140,17 @@ class PantallaLogin(tk.Frame):
         tarjeta.pack()
 
         tk.Label(
-            tarjeta, text="Iniciar Sesión", font=FUENTE_TITULO,
+            tarjeta, text="Iniciar Sesion", font=FUENTE_TITULO,
             bg=WHITE, fg=BLACK
         ).pack(pady=(0, 35))
 
-        # Campo usuario / correo (simulado)
         self.entry_usuario = self._campo_con_placeholder(
-            tarjeta, "Usuario / Correo electronico", bg_campo=GRAY_INPUT
+            tarjeta, "Usuario / Correo electronico"
         )
         self.entry_usuario.pack(fill="x", ipady=10, pady=6)
 
-        # Campo contraseña (oculta)
-        self.entry_password = tk.Entry(
-            tarjeta, show="•", font=FUENTE_BODY,
-            bg=WHITE, fg=BLACK, relief="solid", bd=1, justify="center"
+        self.entry_password = self._campo_password_con_placeholder(
+            tarjeta, "Contrasena"
         )
         self.entry_password.pack(fill="x", ipady=10, pady=6)
 
@@ -146,15 +189,9 @@ class PantallaLogin(tk.Frame):
             side="left", fill="x", expand=True, padx=(10, 0)
         )
 
-    def _campo_con_placeholder(self, parent, texto_placeholder, bg_campo):
-        """
-        Tkinter no tiene "placeholder" nativo en el Entry, así que lo
-        simulamos: mostramos un texto gris que desaparece cuando el
-        usuario hace click (focus) y vuelve a aparecer si el campo
-        queda vacío al salir de él.
-        """
+    def _campo_con_placeholder(self, parent, texto_placeholder):
         entry = tk.Entry(
-            parent, font=FUENTE_BODY, bg=bg_campo, fg="#5a5a5a",
+            parent, font=FUENTE_BODY, bg=GRAY_INPUT, fg="#5a5a5a",
             relief="flat", justify="center"
         )
         entry.insert(0, texto_placeholder)
@@ -171,72 +208,95 @@ class PantallaLogin(tk.Frame):
 
         entry.bind("<FocusIn>", al_enfocar)
         entry.bind("<FocusOut>", al_desenfocar)
-        entry.placeholder = texto_placeholder  # para validar después
+        entry.placeholder = texto_placeholder
         return entry
 
-    # ACCIONES
+    def _campo_password_con_placeholder(self, parent, texto_placeholder):
+        entry = tk.Entry(
+            parent, font=FUENTE_BODY, bg=GRAY_INPUT, fg="#5a5a5a",
+            relief="flat", justify="center"
+        )
+        entry.insert(0, texto_placeholder)
+
+        def al_enfocar(event):
+            if entry.get() == texto_placeholder:
+                entry.delete(0, tk.END)
+                entry.config(fg=BLACK, show="•")
+
+        def al_desenfocar(event):
+            if entry.get().strip() == "":
+                entry.config(show="")
+                entry.insert(0, texto_placeholder)
+                entry.config(fg="#5a5a5a")
+
+        entry.bind("<FocusIn>", al_enfocar)
+        entry.bind("<FocusOut>", al_desenfocar)
+        entry.placeholder = texto_placeholder
+        return entry
+
+    def _obtener_credenciales_limpias(self):
+        usuario = self.entry_usuario.get().strip()
+        password = self.entry_password.get().strip()
+
+        if usuario == self.entry_usuario.placeholder:
+            usuario = ""
+        if password == self.entry_password.placeholder:
+            password = ""
+
+        return usuario, password
 
     def _manejar_login(self):
-        usuario = self.entry_usuario.get()
-        password = self.entry_password.get()
+        usuario, password = self._obtener_credenciales_limpias()
 
-        if usuario == self.entry_usuario.placeholder or usuario.strip() == "":
-            self.label_info.config(text="Debes ingresar un usuario o correo")
+        if not usuario:
+            self.label_info.config(text="Debes ingresar un usuario")
             return
-        if password.strip() == "":
-            self.label_info.config(text="Debes ingresar una contraseña")
+        if not password:
+            self.label_info.config(text="Debes ingresar una contrasena")
             return
 
-        if self.gestor_usuarios.verificar_usuario(usuario.strip(), password):
+        # Verificacion contra usuarios.json
+        if self.gestor_usuarios.verificar_usuario(usuario, password):
             self.label_info.config(text="")
-            print(f"✅ Sesión iniciada con: {usuario}")
+            print(f"Sesion iniciada con exito: {usuario}")
             if self.on_login_exitoso:
-                self.on_login_exitoso(usuario.strip())
+                self.on_login_exitoso(usuario)
         else:
-            self.label_info.config(text="Usuario o contraseña incorrectos")
+            self.label_info.config(text="Usuario o contrasena incorrectos")
 
     def _manejar_crear_cuenta(self):
-        """Registro rápido: usa los mismos campos del login para crear
-        una cuenta nueva y luego iniciar sesión automáticamente."""
-        nombre = self.entry_usuario.get()
-        password = self.entry_password.get()
+        usuario, password = self._obtener_credenciales_limpias()
 
-        if nombre == self.entry_usuario.placeholder or nombre.strip() == "":
-            self.label_info.config(text="Ingresa un nombre de usuario para crear la cuenta")
+        if not usuario:
+            self.label_info.config(text="Ingresa un usuario para registrarte")
             return
-        if password.strip() == "":
-            self.label_info.config(text="Ingresa una contraseña para crear la cuenta")
+        if not password:
+            self.label_info.config(text="Ingresa una contrasena para registrarte")
             return
 
-        nuevo = self.gestor_usuarios.registrar_usuario(nombre.strip(), password)
-        if nuevo is None:
-            self.label_info.config(text="Ese usuario ya existe o los datos no son válidos")
+        nuevo_usuario = self.gestor_usuarios.registrar_usuario(usuario, password)
+        if nuevo_usuario is None:
+            self.label_info.config(text="Ese usuario ya existe o hubo un error")
             return
 
         self.label_info.config(text="")
-        print(f"✅ Cuenta creada: {nuevo.nombre}")
-        messagebox.showinfo("Cuenta creada", f"¡Cuenta '{nuevo.nombre}' creada con éxito!")
+        print(f"Cuenta registrada en JSON: {nuevo_usuario['nombre']}")
+        messagebox.showinfo("Registro exitoso", f"Cuenta '{nuevo_usuario['nombre']}' creada con exito")
+
         if self.on_login_exitoso:
-            self.on_login_exitoso(nuevo.nombre)
+            self.on_login_exitoso(nuevo_usuario["nombre"])
 
-    def _manejar_crear_cuenta_viejo(self):
-        print("Ir a pantalla de crear cuenta")
-        if self.on_crear_cuenta:
-            self.on_crear_cuenta()
-
-
-# PRUEBA INDEPENDIENTE (para que probemos solo esta pantalla)
 
 if __name__ == "__main__":
     root = tk.Tk()
-    root.title("RetroVault - Iniciar Sesión")
+    root.title("RetroVault - Iniciar Sesion")
     root.geometry("1000x650")
     root.configure(bg=BG_DARK)
     root.resizable(False, False)
 
     pantalla = PantallaLogin(
         root,
-        on_login_exitoso=lambda usuario: print(f"Login OK -> {usuario}")
+        on_login_exitoso=lambda usr: print(f"Redirigiendo... Usuario autenticado: {usr}")
     )
     pantalla.pack(fill="both", expand=True)
 
