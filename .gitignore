@@ -29,7 +29,6 @@ Thumbs.db
 *.tmp
 *~
 
-# No ignorar datos del proyecto
+# No ignorar datos del proyecto (JSON se versiona para compartir catálogo y usuarios)
 !data/*.csv
-data/productos.json
-data/usuarios.json
+!data/*.json

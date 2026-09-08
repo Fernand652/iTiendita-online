@@ -1,0 +1,74 @@
+[
+    {
+        "id": 1,
+        "nombre": "Super Nintendo",
+        "precio": 149990.0,
+        "stock": 4,
+        "categoria": "Consolas",
+        "imagen": "data/imagenes/id_1.png"
+    },
+    {
+        "id": 2,
+        "nombre": "The Legend of Zelda: Ocarina of Time",
+        "precio": 1999900.0,
+        "stock": 12,
+        "categoria": "Coleccionables",
+        "imagen": "data/imagenes/id_2.png"
+    },
+    {
+        "id": 3,
+        "nombre": "Super Mario 64",
+        "precio": 209990.0,
+        "stock": 3,
+        "categoria": "Videojuegos",
+        "imagen": "data/imagenes/id_3.png"
+    },
+    {
+        "id": 4,
+        "nombre": "Figura Coleccionable Link",
+        "precio": 34990.0,
+        "stock": 6,
+        "categoria": "Coleccionables",
+        "imagen": "data/imagenes/id_4.png"
+    },
+    {
+        "id": 5,
+        "nombre": "Funko Pop Mario Bros",
+        "precio": 24990.0,
+        "stock": 9,
+        "categoria": "Coleccionables",
+        "imagen": null
+    },
+    {
+        "id": 6,
+        "nombre": "Figura Batman",
+        "precio": 49990.0,
+        "stock": 3,
+        "categoria": "Coleccionables",
+        "imagen": "data/imagenes/id_6.png"
+    },
+    {
+        "id": 7,
+        "nombre": "Figura Xmen Retro Marvel",
+        "precio": 39990.0,
+        "stock": 6,
+        "categoria": "Coleccionables",
+        "imagen": "data/imagenes/id_7.png"
+    },
+    {
+        "id": 8,
+        "nombre": "Diddy Kong Nintendo 64",
+        "precio": 19990.0,
+        "stock": 1,
+        "categoria": "Videojuegos",
+        "imagen": "data/imagenes/id_8.png"
+    },
+    {
+        "id": 9,
+        "nombre": "GameBoy Advance",
+        "precio": 99990.0,
+        "stock": 3,
+        "categoria": "Coleccionables",
+        "imagen": "data/imagenes/id_9.png"
+    }
+]

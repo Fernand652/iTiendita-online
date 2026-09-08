@@ -1,0 +1,42 @@
+[
+    {
+        "nombre": "admin",
+        "password": "1234",
+        "rol": "admin"
+    },
+    {
+        "nombre": "as",
+        "password": "asd",
+        "rol": "normal"
+    },
+    {
+        "nombre": "asd",
+        "password": "asd",
+        "rol": "normal"
+    },
+    {
+        "nombre": "sd",
+        "password": "as",
+        "rol": "normal"
+    },
+    {
+        "nombre": "asdasd",
+        "password": "assds",
+        "rol": "normal"
+    },
+    {
+        "nombre": "asddd",
+        "password": "asdasdddd",
+        "rol": "normal"
+    },
+    {
+        "nombre": "miguel",
+        "password": "123",
+        "rol": "normal"
+    },
+    {
+        "nombre": "mgonzalezt2006@gmail.com",
+        "password": "123",
+        "rol": "normal"
+    }
+]
