@@ -3,11 +3,40 @@ interfaz_crear_cuenta.py
 Pantalla de registro de nuevos usuarios en RetroVault.
 """
 
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import tkinter as tk
 try:
     from vistas.estilos import *
 except ImportError:  # permite ejecutar este archivo directamente
     from estilos import *
+try:
+    from modelos.usuario import GestorUsuarios
+except ImportError:
+    try:
+        from usuario import GestorUsuarios
+    except ImportError:
+        GestorUsuarios = None
+
+try:
+    from vistas.toast import mostrar_toast
+except ImportError:
+    try:
+        from toast import mostrar_toast
+    except ImportError:
+        mostrar_toast = None
+
+
+def _toast(parent, mensaje, tipo="error"):
+    if mostrar_toast is None:
+        return
+    try:
+        mostrar_toast(parent, mensaje, tipo=tipo)
+    except Exception:
+        pass
 
 
 class PantallaCrearCuenta(tk.Frame):
@@ -20,18 +49,27 @@ class PantallaCrearCuenta(tk.Frame):
         on_ir_a_login:      Función llamada al pulsar en 'INICIAR SESIÓN'.
     """
 
-    def __init__(self, parent, on_registro_exitoso=None, on_ir_a_login=None):
+    def __init__(self, parent, on_registro_exitoso=None, on_ir_a_login=None, gestor_usuarios=None, on_ir_explorar=None, on_ver_carrito=None):
         super().__init__(parent, bg=BG_DARK)
         self.on_registro_exitoso = on_registro_exitoso
         self.on_ir_a_login = on_ir_a_login
+        self.on_ir_explorar = on_ir_explorar
+        self.on_ver_carrito = on_ver_carrito
+        if gestor_usuarios is not None:
+            self.gestor_usuarios = gestor_usuarios
+        elif GestorUsuarios is not None:
+            self.gestor_usuarios = GestorUsuarios()
+        else:
+            self.gestor_usuarios = None
 
         self._crear_barra_superior()
         self._crear_tarjeta_registro()
 
-    # ============================================================
+
     # BARRA SUPERIOR
-    # ============================================================
     def _crear_barra_superior(self):
+        # Sin acceso invitado: solo logo. Para ver el catálogo o el
+        # carrito hay que registrarse e iniciar sesión primero.
         barra = tk.Frame(self, bg=BG_DARK)
         barra.pack(fill="x", padx=40, pady=20)
 
@@ -40,45 +78,17 @@ class PantallaCrearCuenta(tk.Frame):
             bg=BG_DARK, fg=GREEN
         ).pack(side="left")
 
-        botones = tk.Frame(barra, bg=BG_DARK)
-        botones.pack(side="right")
+    def _ir_explorar(self):
+        # Botón eliminado de la barra; se mantiene por compatibilidad:
+        # sin sesión siempre pide iniciar sesión.
+        self._mostrar_error("Inicia sesión para continuar")
+        _toast(self, "Inicia sesión para continuar", tipo="info")
 
-        self._boton_secundario(
-            botones, "EXPLORAR",
-            on_click=lambda: print("Ir a explorar catálogo")
-        ).pack(side="left", padx=5)
+    def _ir_carrito(self):
+        self._mostrar_error("Inicia sesión para continuar")
+        _toast(self, "Inicia sesión para continuar", tipo="info")
 
-        self._boton_carrito(botones).pack(side="left", padx=5)
-
-    def _boton_secundario(self, parent, texto, on_click=None):
-        btn = tk.Label(
-            parent, text=texto, font=FUENTE_NAV,
-            bg=GRAY_BTN, fg=WHITE, padx=15, pady=8, cursor="hand2"
-        )
-        if on_click:
-            btn.bind("<Button-1>", lambda e: on_click())
-        return btn
-
-    def _boton_carrito(self, parent):
-        contenedor = tk.Frame(parent, bg=GRAY_BTN, cursor="hand2")
-
-        lbl = tk.Label(
-            contenedor, text="CARRITO", font=FUENTE_NAV,
-            bg=GRAY_BTN, fg=WHITE, padx=15, pady=8
-        )
-        lbl.pack(side="left")
-
-        badge = tk.Label(contenedor, bg=RED_BADGE, width=2)
-        badge.pack(side="left", padx=(0, 10))
-
-        accion = lambda e: print("Ir al carrito")
-        lbl.bind("<Button-1>", accion)
-        badge.bind("<Button-1>", accion)
-        return contenedor
-
-    # ============================================================
     # TARJETA DE REGISTRO
-    # ============================================================
     def _crear_tarjeta_registro(self):
         contenedor = tk.Frame(self, bg=BG_DARK)
         contenedor.pack(expand=True, pady=10)
@@ -126,6 +136,12 @@ class PantallaCrearCuenta(tk.Frame):
             relief="flat", bd=0, cursor="hand2",
             command=self._manejar_registro
         ).pack(fill="x", ipady=9, pady=(20, 10))
+
+        self.label_error = tk.Label(
+            tarjeta, text="", font=FUENTE_BODY,
+            bg=WHITE, fg="#c0392b", wraplength=260
+        )
+        self.label_error.pack(pady=(4, 0))
 
         self._separador_or(tarjeta)
 
@@ -191,9 +207,18 @@ class PantallaCrearCuenta(tk.Frame):
         entry.bind("<FocusOut>", al_desenfocar)
         entry.placeholder = texto_placeholder
 
-    # ============================================================
     # VALIDACIONES Y EVENTOS
-    # ============================================================
+    def _mostrar_error(self, msg):
+        """Muestra un error EN PANTALLA (label rojo + toast flotante 2s)."""
+        self.label_error.config(text=msg)
+        _toast(self, msg, tipo="error")
+        return None
+
+    def _mostrar_exito(self, msg):
+        """Éxito EN PANTALLA (limpia label + toast flotante 1.5s)."""
+        self.label_error.config(text="")
+        _toast(self, msg, tipo="exito")
+
     def _manejar_registro(self):
         nombres = self.entry_nombres.get().strip()
         apellidos = self.entry_apellidos.get().strip()
@@ -202,31 +227,26 @@ class PantallaCrearCuenta(tk.Frame):
         password = self.entry_password.get().strip()
         confirmar = self.entry_confirmar_password.get().strip()
 
-        # Validación de campos obligatorios
+        # Validación de campos obligatorios (errores por pantalla)
         if nombres == self.entry_nombres.placeholder or not nombres:
-            print("⚠️ Debes ingresar tus nombres")
-            return
+            return self._mostrar_error("Debes ingresar tus nombres")
         if apellidos == self.entry_apellidos.placeholder or not apellidos:
-            print("⚠️ Debes ingresar tus apellidos")
-            return
+            return self._mostrar_error("Debes ingresar tus apellidos")
         if pais == self.entry_pais.placeholder or not pais:
-            print("⚠️ Debes ingresar tu país")
-            return
+            return self._mostrar_error("Debes ingresar tu país")
         if correo == self.entry_correo.placeholder or not correo:
-            print("⚠️ Debes ingresar un correo electrónico")
-            return
+            return self._mostrar_error("Debes ingresar un correo electrónico")
         if password == self.entry_password.placeholder or not password:
-            print("⚠️ Debes ingresar una contraseña")
-            return
+            return self._mostrar_error("Debes ingresar una contraseña")
         if confirmar == self.entry_confirmar_password.placeholder or not confirmar:
-            print("⚠️ Debes confirmar tu contraseña")
-            return
+            return self._mostrar_error("Debes confirmar tu contraseña")
 
         # Validación de coincidencia de contraseñas
         if password != confirmar:
-            print("⚠️ Las contraseñas no coinciden")
-            return
+            return self._mostrar_error("Las contraseñas no coinciden")
 
+        # Nombre de login: se usa el correo como identificador único
+        # (compatible con GestorUsuarios que persiste en data/usuarios.json).
         datos_usuario = {
             "nombres": nombres,
             "apellidos": apellidos,
@@ -235,19 +255,25 @@ class PantallaCrearCuenta(tk.Frame):
             "password": password
         }
 
-        print(f"✅ Cuenta creada exitosamente para: {nombres} {apellidos} ({correo})")
+        if self.gestor_usuarios is not None:
+            nuevo = self.gestor_usuarios.registrar_usuario(correo, password)
+            if nuevo is None:
+                self._mostrar_error("Ese correo ya está registrado")
+                return
+            self._mostrar_exito(f"Cuenta '{correo}' creada con éxito")
+        else:
+            self.label_error.config(text="")
+            _toast(self, f"Cuenta '{correo}' creada", tipo="exito")
+
         if self.on_registro_exitoso:
-            self.on_registro_exitoso(datos_usuario)
+            # 400ms para que el toast de éxito se vea antes de navegar
+            datos = dict(datos_usuario)
+            self.after(400, lambda: self.on_registro_exitoso(datos))
 
     def _manejar_ir_a_login(self):
-        print("Volver a pantalla de inicio de sesión")
         if self.on_ir_a_login:
             self.on_ir_a_login()
-
-
-# ============================================================
 # PRUEBA INDEPENDIENTE
-# ============================================================
 if __name__ == "__main__":
     root = tk.Tk()
     root.title("RetroVault - Crear Cuenta")
