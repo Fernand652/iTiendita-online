@@ -31,6 +31,5 @@ Thumbs.db
 
 # No ignorar datos del proyecto
 !data/*.csv
-
 data/productos.json
 data/usuarios.json

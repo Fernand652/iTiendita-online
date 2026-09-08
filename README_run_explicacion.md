@@ -16,10 +16,7 @@ python -m unittest discover -s tests -v
 Archivos compartidos (flujo en equipo)
 
 -Cuando se crea un producto como admin se guarda en data/productos.json.
--ademas con los usuarios pasa igual, y se guarda en data/usuarios.json.
-- Ambos archivos se deben commitear para poder compartir la informacion
-- si alguien hace git pull y abre la app se deberia poder ver los mismos productos y usuarios.
-  Para agregar foto sse debe dejar en cualquier lado del equipo(debe saber donde esta, pero nunca en la carpeta de imagenes del proyecto porque o si no le dara un error a la hora de crear el producto por duplicados), en admin pulsa Examinar PNG,
+-Para agregar foto se debe dejar en cualquier lado del equipo(debe saber donde esta, pero nunca en la carpeta de imagenes del proyecto porque o si no le dara un error a la hora de crear el producto por duplicados), en admin pulsa Examinar PNG,
   llena nombre/precio/stock/categoría (ID vacío = automático) y pulsa Guardar.
  Compilación a ejecutable (.exe, opcional)
 
