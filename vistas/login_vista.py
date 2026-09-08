@@ -3,10 +3,12 @@ login_vista.py
 Pantalla de inicio de sesión de RetroVault conectada a usuarios.json.
 """
 
-import json
 import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import tkinter as tk
-from tkinter import messagebox
 
 # Importación adaptativa de estilos segun la estructura del proyecto
 try:
@@ -31,63 +33,53 @@ except ImportError:
         FUENTE_BODY = ("Arial", 10)
         FUENTE_BOTON = ("Arial", 10, "bold")
 
+try:
+    from modelos.usuario import GestorUsuarios
+except ImportError:
+    try:
+        from usuario import GestorUsuarios
+    except ImportError:
+        GestorUsuarios = None
 
-class GestorUsuariosJSON:
-    """Clase encargada de leer y validar las credenciales desde usuarios.json."""
+try:
+    from vistas.toast import mostrar_toast
+except ImportError:
+    try:
+        from toast import mostrar_toast
+    except ImportError:
+        mostrar_toast = None
 
-    def __init__(self, ruta_json="usuarios.json"):
-        self.ruta_json = ruta_json
 
-    def _cargar_usuarios(self):
-        """Lee el archivo usuarios.json desde la raíz del proyecto."""
-        if not os.path.exists(self.ruta_json):
-            print(f"Advertencia: No se encontro {self.ruta_json}")
-            return []
-        try:
-            with open(self.ruta_json, "r", encoding="utf-8") as archivo:
-                return json.load(archivo)
-        except Exception as e:
-            print(f"Error al cargar {self.ruta_json}: {e}")
-            return []
-
-    def verificar_usuario(self, nombre, password):
-        """Compara el nombre y contraseña con los registros del JSON."""
-        usuarios = self._cargar_usuarios()
-        for u in usuarios:
-            if u.get("nombre") == nombre and u.get("password") == password:
-                return True
-        return False
-
-    def registrar_usuario(self, nombre, password):
-        """Agrega un nuevo usuario al archivo usuarios.json."""
-        usuarios = self._cargar_usuarios()
-        for u in usuarios:
-            if u.get("nombre") == nombre:
-                return None  # El usuario ya existe
-
-        nuevo_usuario = {"nombre": nombre, "password": password}
-        usuarios.append(nuevo_usuario)
-
-        try:
-            with open(self.ruta_json, "w", encoding="utf-8") as archivo:
-                json.dump(usuarios, archivo, indent=2)
-            return nuevo_usuario
-        except Exception as e:
-            print(f"Error al guardar usuario en {self.ruta_json}: {e}")
-            return None
+def _toast(parent, mensaje, tipo="error"):
+    """Toast flotante arriba-derecha; silencioso si toast no disponible."""
+    if mostrar_toast is None:
+        return
+    try:
+        mostrar_toast(parent, mensaje, tipo=tipo)
+    except Exception:
+        pass
 
 
 class PantallaLogin(tk.Frame):
-    def __init__(self, parent, on_login_exitoso=None, on_crear_cuenta=None, gestor_usuarios=None):
+    def __init__(self, parent, on_login_exitoso=None, on_crear_cuenta=None, gestor_usuarios=None, on_ir_explorar=None, on_ver_carrito=None):
         super().__init__(parent, bg=BG_DARK)
         self.on_login_exitoso = on_login_exitoso
         self.on_crear_cuenta = on_crear_cuenta
-        self.gestor_usuarios = gestor_usuarios if gestor_usuarios is not None else GestorUsuariosJSON()
+        self.on_ir_explorar = on_ir_explorar
+        self.on_ver_carrito = on_ver_carrito
+        if gestor_usuarios is not None:
+            self.gestor_usuarios = gestor_usuarios
+        elif GestorUsuarios is not None:
+            self.gestor_usuarios = GestorUsuarios()
+        else:
+            raise ImportError("No se pudo importar GestorUsuarios desde modelos.usuario")
 
         self._crear_barra_superior()
         self._crear_tarjeta_login()
 
     def _crear_barra_superior(self):
+        # Sin acceso invitado: solo logo. Para ver el catálogo o el
+        # carrito hay que iniciar sesión primero.
         barra = tk.Frame(self, bg=BG_DARK)
         barra.pack(fill="x", padx=40, pady=25)
 
@@ -96,41 +88,15 @@ class PantallaLogin(tk.Frame):
             bg=BG_DARK, fg=GREEN
         ).pack(side="left")
 
-        botones = tk.Frame(barra, bg=BG_DARK)
-        botones.pack(side="right")
+    def _ir_explorar(self):
+        # Botón eliminado de la barra; se mantiene por compatibilidad:
+        # sin sesión siempre pide iniciar sesión.
+        self.label_info.config(text="Inicia sesión para continuar")
+        _toast(self, "Inicia sesión para continuar", tipo="info")
 
-        self._boton_secundario(
-            botones, "EXPLORAR",
-            on_click=lambda: print("Ir a explorar catalogo")
-        ).pack(side="left", padx=5)
-
-        self._boton_carrito(botones).pack(side="left", padx=5)
-
-    def _boton_secundario(self, parent, texto, on_click=None):
-        btn = tk.Label(
-            parent, text=texto, font=FUENTE_NAV,
-            bg=GRAY_BTN, fg=WHITE, padx=15, pady=8, cursor="hand2"
-        )
-        if on_click:
-            btn.bind("<Button-1>", lambda e: on_click())
-        return btn
-
-    def _boton_carrito(self, parent):
-        contenedor = tk.Frame(parent, bg=GRAY_BTN, cursor="hand2")
-
-        lbl = tk.Label(
-            contenedor, text="CARRITO", font=FUENTE_NAV,
-            bg=GRAY_BTN, fg=WHITE, padx=15, pady=8
-        )
-        lbl.pack(side="left")
-
-        badge = tk.Label(contenedor, bg=RED_BADGE, width=2)
-        badge.pack(side="left", padx=(0, 10))
-
-        accion = lambda e: print("Ir al carrito")
-        lbl.bind("<Button-1>", accion)
-        badge.bind("<Button-1>", accion)
-        return contenedor
+    def _ir_carrito(self):
+        self.label_info.config(text="Inicia sesión para continuar")
+        _toast(self, "Inicia sesión para continuar", tipo="info")
 
     def _crear_tarjeta_login(self):
         contenedor = tk.Frame(self, bg=BG_DARK)
@@ -250,41 +216,54 @@ class PantallaLogin(tk.Frame):
 
         if not usuario:
             self.label_info.config(text="Debes ingresar un usuario")
+            _toast(self, "Debes ingresar un usuario", tipo="error")
             return
         if not password:
             self.label_info.config(text="Debes ingresar una contrasena")
+            _toast(self, "Debes ingresar una contrasena", tipo="error")
             return
 
-        # Verificacion contra usuarios.json
+        # Verificacion contra data/usuarios.json (errores en label_info + toast)
         if self.gestor_usuarios.verificar_usuario(usuario, password):
             self.label_info.config(text="")
-            print(f"Sesion iniciada con exito: {usuario}")
+            _toast(self, f"Sesión iniciada: {usuario}", tipo="exito")
             if self.on_login_exitoso:
-                self.on_login_exitoso(usuario)
+                # Dar 400ms para que el toast de éxito se vea antes de navegar
+                self.after(400, lambda: self.on_login_exitoso(usuario))
         else:
             self.label_info.config(text="Usuario o contrasena incorrectos")
+            _toast(self, "Usuario o contrasena incorrectos", tipo="error")
 
     def _manejar_crear_cuenta(self):
+        # Si el main provee pantalla de registro, navegar hacia ella.
+        if self.on_crear_cuenta:
+            self.on_crear_cuenta()
+            return
+
         usuario, password = self._obtener_credenciales_limpias()
 
         if not usuario:
             self.label_info.config(text="Ingresa un usuario para registrarte")
+            _toast(self, "Ingresa un usuario para registrarte", tipo="error")
             return
         if not password:
             self.label_info.config(text="Ingresa una contrasena para registrarte")
+            _toast(self, "Ingresa una contrasena para registrarte", tipo="error")
             return
 
         nuevo_usuario = self.gestor_usuarios.registrar_usuario(usuario, password)
         if nuevo_usuario is None:
             self.label_info.config(text="Ese usuario ya existe o hubo un error")
+            _toast(self, "Ese usuario ya existe o hubo un error", tipo="error")
             return
 
+        # GestorUsuarios retorna objeto Usuario (con .nombre), no dict.
+        nombre = getattr(nuevo_usuario, "nombre", str(nuevo_usuario))
         self.label_info.config(text="")
-        print(f"Cuenta registrada en JSON: {nuevo_usuario['nombre']}")
-        messagebox.showinfo("Registro exitoso", f"Cuenta '{nuevo_usuario['nombre']}' creada con exito")
+        _toast(self, f"Cuenta '{nombre}' creada con exito", tipo="exito")
 
         if self.on_login_exitoso:
-            self.on_login_exitoso(nuevo_usuario["nombre"])
+            self.after(400, lambda: self.on_login_exitoso(nombre))
 
 
 if __name__ == "__main__":
