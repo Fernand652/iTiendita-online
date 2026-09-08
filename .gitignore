@@ -29,8 +29,6 @@ Thumbs.db
 *.tmp
 *~
 
-# No ignorar datos del proyecto
+# Datos compartidos del proyecto
+# Cuando se haga un pull, todos tendran los mismos productos y el mismo admin.
 !data/*.csv
-
-data/productos.json
-data/usuarios.json
