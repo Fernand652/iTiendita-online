@@ -7,7 +7,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from modelos.usuario import GestorUsuarios
+from modelos.usuario import GestorUsuarios, es_correo_valido
 
 
 def _tmp():
@@ -72,6 +72,17 @@ class TestGestorUsuarios(unittest.TestCase):
         g2 = GestorUsuarios(archivo=self.archivo)
         self.assertTrue(g2.verificar_usuario("pers", "pw"))
         self.assertFalse(g2.es_admin("pers"))
+
+
+class TestCorreoValido(unittest.TestCase):
+    def test_validos(self):
+        for c in ["a@b.cl", "usuario@gmail.com", "nombre.apellido@dominio.org", "  x@y.com  "]:
+            self.assertTrue(es_correo_valido(c), c)
+
+    def test_invalidos(self):
+        for c in ["", "   ", "abc", "abc@", "@dominio.com", "a@b@c.com",
+                  "a@bcom", "a@b.", "usuario@dominio", None]:
+            self.assertFalse(es_correo_valido(c), c)
 
 
 if __name__ == "__main__":

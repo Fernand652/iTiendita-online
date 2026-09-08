@@ -14,12 +14,13 @@ try:
 except ImportError:  # permite ejecutar este archivo directamente
     from estilos import *
 try:
-    from modelos.usuario import GestorUsuarios
+    from modelos.usuario import GestorUsuarios, es_correo_valido
 except ImportError:
     try:
-        from usuario import GestorUsuarios
+        from usuario import GestorUsuarios, es_correo_valido
     except ImportError:
         GestorUsuarios = None
+        es_correo_valido = None
 
 try:
     from vistas.toast import mostrar_toast
@@ -236,6 +237,8 @@ class PantallaCrearCuenta(tk.Frame):
             return self._mostrar_error("Debes ingresar tu país")
         if correo == self.entry_correo.placeholder or not correo:
             return self._mostrar_error("Debes ingresar un correo electrónico")
+        if es_correo_valido is not None and not es_correo_valido(correo):
+            return self._mostrar_error("El correo electrónico no es válido")
         if password == self.entry_password.placeholder or not password:
             return self._mostrar_error("Debes ingresar una contraseña")
         if confirmar == self.entry_confirmar_password.placeholder or not confirmar:

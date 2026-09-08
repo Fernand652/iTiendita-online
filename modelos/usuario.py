@@ -61,6 +61,29 @@ def _rol_para(nombre):
     return "normal"
 
 
+def es_correo_valido(correo):
+    """
+    Valida un correo con reglas simples (sin librerías externas):
+    - No vacío y contiene exactamente un '@'.
+    - Parte local no vacía (antes del @).
+    - Dominio no vacío y contiene un punto, con parte local de dominio
+      y TLD no vacías (dominio.tld).
+    """
+    correo = (correo or "").strip()
+    partes = correo.split("@")
+    if len(partes) != 2:
+        return False
+    local, dominio = partes
+    if not local or not dominio:
+        return False
+    if "." not in dominio:
+        return False
+    antes_punto, _, tld = dominio.rpartition(".")
+    if not antes_punto or not tld:
+        return False
+    return True
+
+
 def _es_hash(texto):
     """True si el texto parece un hash SHA-256 (64 caracteres hex)."""
     if not isinstance(texto, str):
