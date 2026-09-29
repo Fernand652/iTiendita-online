@@ -255,20 +255,23 @@ class carrito(tk.Frame):
             self.lista_actual.remove(elemento)
             self.actualizar_carrito(self.lista_actual)
 
-    # LÓGICA ITEM 4: SUB-TOTAL, IVA (19%) Y TOTAL
-    def _actualizar_totales(self):
+     def _actualizar_totales(self):
         if not self.lista_actual:
             self.subtotal_actual = 0.0
             self.iva_actual = 0.0
             self.total_actual = 0.0
-        else:
-            # Subtotal: Suma de (precio * cantidad) de cada item
-            self.subtotal_actual = sum(float(i["producto"].precio) * i["cantidad"] for i in self.lista_actual)
-            # IVA: 19% sobre el subtotal
+        else:  
+            subtotal = 0.0 
+            lineas_desglose = []
+            for item in self.lista_actual: 
+                prod = item["producto"]
+                cant = item["cantidad"]
+                precio = float(prod.precio)
+                total_item = precio*cant
+                subtotal += total_item 
+            self.subtotal_actual = subtotal
             self.iva_actual = self.subtotal_actual * 0.19
-            # Total: Subtotal + IVA
             self.total_actual = self.subtotal_actual + self.iva_actual
-
         # Formato numérico estándar chileno
         sub_str = f"{self.subtotal_actual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         iva_str = f"{self.iva_actual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
