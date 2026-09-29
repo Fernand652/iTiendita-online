@@ -678,8 +678,18 @@ class PantallaAdmin(tk.Frame):
         if self.id_seleccionado is None:
             self._error("Selecciona un producto de la tabla primero")
             return
-
-        producto = self.inventario.buscar_por_id(self.id_seleccionado)
+    def _actualizar_solo_stock(self):
+        if self.id_seleccionado is None:
+            self._error("Selecciona un producto de la tabla primero ")
+            return
+        try:
+            nuevo_stock=int(self.entry_stock.get())
+        except ValueError:
+            self._error("El stock debe ser un numero entero valido")
+            return
+        try:
+            self.inventario.actualizar_cantidad(self.id_seleccionado,nuevo_stock)
+            producto=self.inventario.buscar_por_id(self.id_seleccionado
         if not messagebox.askyesno("Confirmar eliminación", f"¿Seguro que quieres eliminar '{producto.nombre}'?"):
             return
 
