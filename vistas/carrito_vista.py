@@ -154,6 +154,13 @@ class carrito(tk.Frame):
         )
         self.lbl_mensaje.pack(fill="x", pady=(10, 0))
 
+#Boton vaciar carrito
+        tk.Button(
+            resumen, text="VACIAR CARRITO", font=FUENTE_BOTON,
+            bg=GRAY_BTN, fg=WHITE, activebackground="#ff4d4d",
+            relief="flat", bd=0, cursor="hand2", command=self.vacia_todo
+        ).pack(fill="x", ipady=8, pady=(10,0))
+
     def _mostrar_mensaje(self, msg, tipo="error"):
         self.lbl_mensaje.config(text=msg)
         _toast(self, msg, tipo=tipo)
@@ -275,6 +282,14 @@ class carrito(tk.Frame):
         for widget in self.col_izquierda.winfo_children():
             widget.destroy()
         self.mostrar_productos(productos)
+
+    def vacia_todo(self):
+        if not self.lista_actual:
+            self._mostrar_mensaje("Tu carrito ya está vacío", tipo="info")
+            return
+        self.lista_actual.clear()
+        self.actualizar_carrito([])
+        self._mostrar_mensaje("Carrito vaciado", tipo="info")
 
     def volver(self):
         if self.on_volver:

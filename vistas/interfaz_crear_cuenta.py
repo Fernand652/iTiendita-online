@@ -5,6 +5,9 @@ Pantalla de registro de nuevos usuarios en RetroVault.
 
 import os
 import sys
+from tkinter import ttk
+
+
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -109,8 +112,17 @@ class PantallaCrearCuenta(tk.Frame):
         self.entry_apellidos = self._campo_con_placeholder(tarjeta, "Apellidos", bg_campo=GRAY_INPUT)
         self.entry_apellidos.pack(fill="x", ipady=8, pady=4)
 
-        self.entry_pais = self._campo_con_placeholder(tarjeta, "País", bg_campo=GRAY_INPUT)
-        self.entry_pais.pack(fill="x", ipady=8, pady=4)
+        PAISES = ["Argentina","Angola","Australia","Argelia","Albania","Andorra","Antigua y Barbuda","Armenia",
+                  "Austria","Azerbaiyán","Bahamas","Bangladés","Barbados","Baréin","Bélgica","Belice","Benín",
+                  "Bielorrusia","Birmania (Myanmar)","Bolivia","Bosnia y Herzegovina","Botsuana","Brasil","Brunéi Darussalam",
+                  "Bulgaria","Burkina Faso","Burundi","Chile","China","Chipre","Colombia","Comoras","Corea del Norte","Corea del Sur",
+                  "Costa de Marfil","Costa Rica","Croacia","Cuba","Dinamarca","Dominica","Ecuador","Egipto","El Salvador","Emiratos Árabes Unidos",
+                  "Eritrea","Eslovaquia","Eslovenia","España","Estados Unidos de América (EE. UU.)","Estonia","Etiopía","Francia","Filipinas",
+                  "Finlandia","Fiyi","Gabón","Gambia","Georgia","Ghana","Granada","Grecia","Guatemala","Venezuela","Otro"]
+
+        self.combo_pais = ttk.Combobox(tarjeta, values=PAISES, state="readonly",font=FUENTE_BODY, justify="center")
+        self.combo_pais.set("Selecciona tu país")
+        self.combo_pais.pack(fill="x", ipady=6, pady=4)
 
         self.entry_correo = self._campo_con_placeholder(tarjeta, "Correo electrónico", bg_campo=GRAY_INPUT)
         self.entry_correo.pack(fill="x", ipady=8, pady=4)
@@ -224,6 +236,8 @@ class PantallaCrearCuenta(tk.Frame):
         nombres = self.entry_nombres.get().strip()
         apellidos = self.entry_apellidos.get().strip()
         pais = self.entry_pais.get().strip()
+        if pais in ("Selecciona tu país",""):
+            return self._mostrar_error("Debes seleccionar tu país")
         correo = self.entry_correo.get().strip()
         password = self.entry_password.get().strip()
         confirmar = self.entry_confirmar_password.get().strip()
