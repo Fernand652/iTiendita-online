@@ -100,7 +100,6 @@ class Inventario:
         producto.imagen = imagen
         self._guardar()
         return True
-
     def eliminar_producto(self, id_producto):
         producto = self.buscar_por_id(id_producto)
         if producto is None:
@@ -108,7 +107,14 @@ class Inventario:
         self.productos.remove(producto)
         self._guardar()
         return True
-
+    def vaciar_inventario(self,ids_a_eliminar=None):
+        if ids_a_eliminar is None:
+            self.productos.clear()
+        else:
+            ids_set=set(ids_a_eliminar)
+            self.productos=[ p for p in self.productos if p.id not in ids_set]
+        self._guardar()
+        return True
     def obtener_categorias(self):
         """Categorías únicas en uso (para el combo de la interfaz)."""
         categorias = []
