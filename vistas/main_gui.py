@@ -37,6 +37,7 @@ try:
     from vistas.toast import mostrar_toast
     from modelos.usuario import GestorUsuarios
     from modelos.inventario import Inventario
+    from modelos.producto import Producto
     try:
         from persistencia.gestor_persistencia import (
             RUTA_VENTAS_JSON,
@@ -59,6 +60,7 @@ except ImportError:  # fallback cuando se ejecuta con cwd=vistas/
         mostrar_toast = None
     from modelos.usuario import GestorUsuarios
     from modelos.inventario import Inventario
+    from modelos.producto import Producto
     try:
         from persistencia.gestor_persistencia import (
             RUTA_VENTAS_JSON,
@@ -79,7 +81,22 @@ def _toast(widget, mensaje, tipo="error"):
 
 
 class RetroVaultApp:
-    def __init__(self, root):
+    """
+    La app.
+
+    Por defecto trabaja SOLA en esta máquina, como siempre: el carrito y el
+    stock viven acá.
+
+    Si se le pasa un servidor o una conexión por socket, además Avisa por
+    socket en cada cambio del carrito. La lógica del carrito NO cambia: es la
+    misma para los dos modos, solo se agrega el aviso.
+
+    Regla de oro de los sockets: el hilo del socket nunca toca la ventana.
+    Deja los mensajes en una bandeja y el hilo principal de Tk los lee con
+    root.after(). Ver _bombeo_de_eventos.
+    """
+
+    def __init__(self, root, servidor=None, conexion=None):
         self.root = root
         self.root.title("RetroVault")
         self.root.geometry("1100x700")
@@ -100,11 +117,177 @@ class RetroVaultApp:
         # A dónde volver después de loguearse (principal o carrito)
         self._destino_post_login = "principal"
 
+        # Si somos el ADMIN: el hilo del servidor de sockets.
+        self.servidor = servidor
+        # Si somos un CLIENTE: la conexión al servidor de la otra máquina.
+        self.conexion = conexion
+        # Identidad con la que el servidor guarda nuestro carrito mientras
+        # somos invitados (todavía no hay usuario con nombre).
+        self._id_remoto = self.usuario_actual or "invitado"
+
+        # Foto del catálogo, para detectar cuándo lo editamos y avisarle a
+        # los clientes conectados.
+        self._huella_catalogo = self._calcular_huella()
+
         self.contenedor = tk.Frame(root, bg=BG_DARK)
         self.contenedor.pack(fill="both", expand=True)
 
         # Arranque como invitado: catálogo visible sin pedir login
         self.mostrar_principal()
+
+        # Con sockets hay que estar escuchando la bandeja con root.after.
+        if self.servidor is not None or self.conexion is not None:
+            self._bombeo_de_eventos()
+
+    # ------------------------------------------------------------------
+    # AVISOS POR SOCKET
+    # ------------------------------------------------------------------
+    def _items_para_red(self):
+        """
+        El carrito local convertido a la forma simple que viaja por JSON.
+
+        Por el socket no pueden viajar objetos Producto, solo datos simples.
+        """
+        return [{"id": el["producto"].id, "cantidad": el["cantidad"]}
+                for el in self.carrito]
+
+    def _notificar_carrito(self):
+        """
+        Le manda el carrito al servidor (si estamos conectados por socket).
+
+        El stock lo descuenta el servidor, no nosotros: por eso el aviso va
+        después de modificar el carrito, no antes.
+        """
+        if self.conexion is None or not self.conexion.conectado:
+            return
+        if self.conexion.usuario != self._id_remoto:
+            # Todavía no nos registramos (invitado): no vale la pena mandar.
+            return
+        self.conexion.enviar_carrito(self._items_para_red())
+
+    def _calcular_huella(self):
+        """
+        Una "foto" barata del catálogo. Si cambia, el ADMIN editó algo y hay
+        que avisarle a los clientes conectados.
+
+        No comparamos los objetos Producto con == (no están definidos para
+        eso); comparamos los valores que importan.
+        """
+        return tuple(
+            (p.id, p.nombre, p.precio, p.stock) for p in self.inventario.productos
+        )
+
+    def _bombeo_de_eventos(self):
+        """
+        Lee las bandejas de los sockets y las vuelca en la ventana.
+
+        Hay DOS posibles fuentes: la del servidor (estamos en el ADMIN) y la
+        de la conexión (estamos en un CLIENTE). En los dos casos el hilo del
+        socket solo dejó el mensaje en su cola; el vaciado se hace acá, en el
+        hilo principal de Tk. Por eso la ventana nunca se congela.
+        """
+        mensajes = []
+        if self.servidor is not None:
+            while True:
+                mensaje = self.servidor.sacar_evento()
+                if mensaje is None:
+                    break
+                mensajes.append(mensaje)
+        if self.conexion is not None:
+            while True:
+                mensaje = self.conexion.sacar_mensaje()
+                if mensaje is None:
+                    break
+                mensajes.append(mensaje)
+
+        for mensaje in mensajes:
+            self._al_recibir_mensaje(mensaje)
+
+        # Si somos el ADMIN y el catálogo cambió, avisamos a los clientes.
+        if self.servidor is not None and self.servidor.activo:
+            nueva = self._calcular_huella()
+            if nueva != self._huella_catalogo:
+                self._huella_catalogo = nueva
+                self.servidor.difundir_inventario()
+
+        self.root.after(100, self._bombeo_de_eventos)
+
+    def _al_recibir_mensaje(self, mensaje):
+        """Aplica un mensaje que llegó por socket a la ventana."""
+        from red.protocolo import (
+            T_CARRITOS, T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO,
+            T_PAGO_OK, T_ERROR, T_DESCONECTADO,
+        )
+
+        tipo = mensaje.get("type")
+        if tipo == T_CARRITOS:
+            # Somos el ADMIN: así están los carritos de todos.
+            # Al panel solo le alcanza con la cantidad de cada item.
+            self.carritos.update(mensaje.get("carritos") or {})
+            self._refrescar_admin()
+        elif tipo == T_INVENTARIO and self.conexion is not None:
+            # Somos el CLIENTE: el catálogo con el stock REAL.
+            productos = mensaje.get("productos")
+            if productos:
+                self.inventario.productos = [
+                    Producto.from_dict(d) for d in productos
+                    if isinstance(d, dict) and "id" in d
+                ]
+                self._refrescar_todas()
+        elif tipo == T_STOCK:
+            producto = self.inventario.buscar_por_id(mensaje.get("id"))
+            if producto is not None:
+                producto.stock = mensaje.get("stock", producto.stock)
+            self._refrescar_todas()
+        elif tipo == T_CARRITO_ESTADO:
+            # El servidor dijo cómo quedó el carrito de verdad (no había
+            # stock para todo lo que pedimos). Ajustamos la pantalla.
+            self._aplicar_carrito_del_servidor(mensaje.get("items") or [])
+        elif tipo == T_PAGO_OK:
+            _toast(self.root, f"¡Compra confirmada! Total: ${mensaje.get('total', 0):,.0f}",
+                   tipo="info")
+        elif tipo == T_DESCONECTADO:
+            _toast(self.root, "Se perdió la conexión con el servidor", tipo="error")
+        elif tipo == T_ERROR:
+            _toast(self.root, mensaje.get("mensaje", "Error del servidor"),
+                   tipo="error")
+
+    def _aplicar_carrito_del_servidor(self, items):
+        """Rehace el carrito local con lo que el servidor dice que quedó."""
+        self.carrito = []
+        for item in items or []:
+            producto = self.inventario.buscar_por_id(item.get("id"))
+            if producto is not None:
+                self.carrito.append({"producto": producto,
+                                     "cantidad": int(item["cantidad"])})
+        self.carritos[self._id_remoto] = self.carrito
+        self._refrescar_carrito()
+
+    def _refrescar_admin(self):
+        """Redibuja la pantalla de admin si es la que está visible."""
+        for hijo in self.contenedor.winfo_children():
+            refrescar = getattr(hijo, "_refrescar_tabla", None)
+            if refrescar is not None:
+                refrescar()
+
+    def _refrescar_carrito(self):
+        """Redibuja la pantalla del carrito si es la que está visible."""
+        for hijo in self.contenedor.winfo_children():
+            mostrar = getattr(hijo, "mostrar_productos", None)
+            if mostrar is not None:
+                mostrar(self.carrito)
+
+    def _refrescar_todas(self):
+        """Redibuja la pantalla del catálogo si es la que está visible."""
+        for hijo in self.contenedor.winfo_children():
+            for atributo in ("_cargar_productos", "_cargar", "_refrescar"):
+                metodo = getattr(hijo, atributo, None)
+                if callable(metodo):
+                    try:
+                        metodo()
+                    except Exception:
+                        pass
+                    return
 
     def _limpiar_contenedor(self):
         for widget in self.contenedor.winfo_children():
@@ -121,6 +304,9 @@ class RetroVaultApp:
         self.usuario_actual = None
         self.carrito = []
         self._destino_post_login = "principal"
+        # Volvemos a ser invitados: el carrito siguiente solo es local hasta
+        # que se inicie sesión otra vez.
+        self._id_remoto = "invitado"
         self.mostrar_principal()
         # El toast vive en la raíz así que sobrevive al cambio de pantalla
         _toast(self.root, "Sesión cerrada", tipo="info")
@@ -146,6 +332,7 @@ class RetroVaultApp:
                 if not self.inventario.descontar_stock(producto.id, 1):
                     return False, f"Sin stock disponible de {producto.nombre}"
                 elemento["cantidad"] += 1
+                self._notificar_carrito()
                 return True, f"Añadido: {producto.nombre} x{elemento['cantidad']}"
         # Si no está, lo agrega por primera vez
         if producto.stock <= 0:
@@ -153,6 +340,7 @@ class RetroVaultApp:
         if not self.inventario.descontar_stock(producto.id, 1):
             return False, f"{producto.nombre} sin stock"
         self.carrito.append({"producto": producto, "cantidad": 1})
+        self._notificar_carrito()
         return True, f"Añadido: {producto.nombre}"
 
     def _restar_del_carrito(self, elemento):
@@ -163,6 +351,7 @@ class RetroVaultApp:
         elemento["cantidad"] -= 1
         if elemento["cantidad"] <= 0:
             self.carrito.remove(elemento)
+        self._notificar_carrito()
         return self.carrito
 
     def _eliminar_del_carrito(self, elemento):
@@ -173,6 +362,7 @@ class RetroVaultApp:
             elemento["producto"].id, elemento["cantidad"]
         )
         self.carrito.remove(elemento)
+        self._notificar_carrito()
         return self.carrito
 
     def _vaciar_carrito(self):
@@ -182,6 +372,7 @@ class RetroVaultApp:
                 elemento["producto"].id, elemento["cantidad"]
             )
         self.carrito.clear()
+        self._notificar_carrito()
         return self.carrito
 
     def _registrar_venta(self):
@@ -218,6 +409,12 @@ class RetroVaultApp:
         """Confirma la venta: la registra y vacía SIN devolver stock."""
         if not self.carrito:
             return False
+        if self.conexion is not None and self.conexion.conectado:
+            # Con sockets el SERVER es quien cobra y descuenta. Le pedimos
+            # confirmar y esperamos su respuesta; si el stock no alcanzan nos
+            # va a corregir el carrito con T_CARRITO_ESTADO.
+            self.conexion.pagar()
+            return True
         self._registrar_venta()
         self.carrito.clear()
         return True
@@ -341,6 +538,7 @@ class RetroVaultApp:
         # invitado ya había agregado (stock ya reservado, solo se traspasa).
         invitados = list(self.carrito) if self.usuario_actual is None and self.carrito else []
         self.usuario_actual = usuario
+        self._id_remoto = usuario
         if usuario not in self.carritos:
             self.carritos[usuario] = []
         self.carrito = self.carritos[usuario]
@@ -354,6 +552,12 @@ class RetroVaultApp:
                 self.carrito.append(g)
         destino = self._destino_post_login or "principal"
         self._destino_post_login = "principal"
+        # Con sockets: recién ahora tenemos nombre, así que recién ahora nos
+        #.presentamos al servidor y le mandamos el carrito (que incluía lo que
+        # el invitado había armado).
+        if self.conexion is not None and self.conexion.conectado:
+            self.conexion.registrarse(usuario)
+            self._notificar_carrito()
         if destino == "carrito":
             self.mostrar_carrito()
         else:
@@ -363,6 +567,7 @@ class RetroVaultApp:
         # Los nuevos registros son siempre "normal"; mismo merge de invitado.
         invitados = list(self.carrito) if self.usuario_actual is None and self.carrito else []
         self.usuario_actual = datos_usuario.get("correo")
+        self._id_remoto = self.usuario_actual
         if self.usuario_actual not in self.carritos:
             self.carritos[self.usuario_actual] = []
         self.carrito = self.carritos[self.usuario_actual]
@@ -376,6 +581,9 @@ class RetroVaultApp:
                 self.carrito.append(g)
         destino = self._destino_post_login or "principal"
         self._destino_post_login = "principal"
+        if self.conexion is not None and self.conexion.conectado:
+            self.conexion.registrarse(self.usuario_actual)
+            self._notificar_carrito()
         if destino == "carrito":
             self.mostrar_carrito()
         else:
