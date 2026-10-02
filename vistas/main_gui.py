@@ -5,10 +5,12 @@ Punto de entrada ÚNICO de la aplicación gráfica RetroVault.
 Conecta las 6 vistas en la MISMA ventana, compartiendo las MISMAS
 instancias de Inventario y GestorUsuarios (persistencia en data/*.json):
 
-  LOGIN <-> CREAR CUENTA -> PRINCIPAL <-> EXPLORAR <-> CARRITO + ADMIN
+  PRINCIPAL (invitado) <-> EXPLORAR <-> CARRITO -> LOGIN/CREAR CUENTA -> PRINCIPAL + ADMIN
 
-Sesión: self.usuario_actual (str o None). ADMIN solo para rol admin.
-SALIR limpia el carrito y vuelve al login.
+Sesión: self.usuario_actual (str o None). None = invitado: puede ver
+catálogo, explorar y agregar al carrito, pero al PAGAR se le exige
+iniciar sesión. ADMIN solo para rol admin.
+SALIR vuelve al modo invitado (limpia carrito).
 
 Ejecución desde la raíz del proyecto:
     python vistas/main_gui.py
@@ -95,11 +97,14 @@ class RetroVaultApp:
         # self.carrito siempre apunta a la lista del usuario activo.
         self.carritos = {}
         self.carrito = []
+        # A dónde volver después de loguearse (principal o carrito)
+        self._destino_post_login = "principal"
 
         self.contenedor = tk.Frame(root, bg=BG_DARK)
         self.contenedor.pack(fill="both", expand=True)
 
-        self.mostrar_login()
+        # Arranque como invitado: catálogo visible sin pedir login
+        self.mostrar_principal()
 
     def _limpiar_contenedor(self):
         for widget in self.contenedor.winfo_children():
@@ -110,13 +115,14 @@ class RetroVaultApp:
         return self.gestor_usuarios.es_admin(self.usuario_actual)
     # sesion
     def cerrar_sesion(self):
-        """Cierra sesión: guarda el carrito del usuario y vuelve al login."""
+        """Cierra sesión: preserva el carrito del usuario y vuelve a modo invitado."""
         # El carrito queda guardado en self.carritos[usuario] con su stock
-        # reservado; no se vacía ni se devuelve (el pedido sigue vigente).
+        # reservado; no se vacía ni se devuelve. Se arranca carrito invitado nuevo.
         self.usuario_actual = None
         self.carrito = []
-        self.mostrar_login()
-        # El login se acaba de crear; el toast vive en la raíz así que sobrevive
+        self._destino_post_login = "principal"
+        self.mostrar_principal()
+        # El toast vive en la raíz así que sobrevive al cambio de pantalla
         _toast(self.root, "Sesión cerrada", tipo="info")
     # acciones del carrito  
 
@@ -128,11 +134,10 @@ class RetroVaultApp:
 
     def _agregar_al_carrito(self, producto):
         """
-        Reserva 1 unidad en el inventario y la suma al carrito del usuario
-        activo. Retorna (ok, msg) para mostrar EN PANTALLA.
+        Reserva 1 unidad en el inventario y la suma al carrito activo
+        (invitado o usuario). Retorna (ok, msg) para mostrar EN PANTALLA.
+        El invitado puede agregar; solo PAGAR exige login.
         """
-        if self.usuario_actual is None:
-            return False, "Inicia sesión primero"
         # Si el producto ya está en el carrito, solo aumenta cantidad
         for elemento in self.carrito:
             if elemento["producto"].id == producto.id:
@@ -225,6 +230,20 @@ class RetroVaultApp:
             return False
         return True
 
+    def _ir_a_login_preservando_carrito(self, destino="principal"):
+        """Lleva al login SIN borrar el carrito (flujo invitado -> comprar)."""
+        self._destino_post_login = destino
+        self.mostrar_login()
+
+    def _exigir_login_para_comprar(self, destino="carrito"):
+        """Gate solo para PAGAR: el invitado puede mirar y agregar, pero para
+        comprar debe iniciar sesión. No borra el carrito."""
+        if self.usuario_actual is None:
+            self._ir_a_login_preservando_carrito(destino=destino)
+            _toast(self.root, "Inicia sesión para comprar", tipo="info")
+            return False
+        return True
+
     def mostrar_login(self):
         self._limpiar_contenedor()
         pantalla = PantallaLogin(
@@ -232,6 +251,7 @@ class RetroVaultApp:
             on_login_exitoso=self._al_iniciar_sesion,
             on_crear_cuenta=self.mostrar_crear_cuenta,
             gestor_usuarios=self.gestor_usuarios,
+            on_continuar_invitado=self.mostrar_principal,
         )
         pantalla.pack(fill="both", expand=True)
 
@@ -242,12 +262,12 @@ class RetroVaultApp:
             on_registro_exitoso=self._al_registrarse,
             on_ir_a_login=self.mostrar_login,
             gestor_usuarios=self.gestor_usuarios,
+            on_continuar_invitado=self.mostrar_principal,
         )
         pantalla.pack(fill="both", expand=True)
 
     def mostrar_principal(self):
-        if not self._requiere_sesion():
-            return
+        # Modo invitado permitido: sin sesión se muestra igual con usuario "Invitado"
         self._limpiar_contenedor()
         pantalla = PantallaPrincipal(
             self.contenedor,
@@ -259,12 +279,12 @@ class RetroVaultApp:
             usuario_actual=self.usuario_actual,
             es_admin=self._es_admin(),
             on_cerrar_sesion=self.cerrar_sesion,
+            on_ir_login=lambda: self._ir_a_login_preservando_carrito(destino="principal"),
         )
         pantalla.pack(fill="both", expand=True)
 
     def mostrar_explorar(self, filtro_inicial=""):
-        if not self._requiere_sesion():
-            return
+        # Modo invitado permitido
         self._limpiar_contenedor()
         pantalla = PantallaExplorar(
             self.contenedor,
@@ -275,6 +295,7 @@ class RetroVaultApp:
             on_ver_carrito=self.mostrar_carrito,
             usuario_actual=self.usuario_actual,
             on_cerrar_sesion=self.cerrar_sesion,
+            on_ir_login=lambda: self._ir_a_login_preservando_carrito(destino="principal"),
         )
         pantalla.pack(fill="both", expand=True)
 
@@ -296,8 +317,7 @@ class RetroVaultApp:
         pantalla.pack(fill="both", expand=True)
 
     def mostrar_carrito(self):
-        if not self._requiere_sesion():
-            return
+        # Modo invitado permitido: ver y agregar sí, pagar exige login
         self._limpiar_contenedor()
         pantalla = PantallaCarrito(
             self.contenedor,
@@ -310,26 +330,56 @@ class RetroVaultApp:
             on_pagar_confirmado=self._confirmar_pago,
             usuario_actual=self.usuario_actual,
             on_cerrar_sesion=self.cerrar_sesion,
+            on_ir_login=lambda: self._ir_a_login_preservando_carrito(destino="carrito"),
+            on_exigir_login=lambda: self._exigir_login_para_comprar(destino="carrito"),
         )
         pantalla.pack(fill="both", expand=True)
         pantalla.mostrar_productos(self.carrito)
 
     def _al_iniciar_sesion(self, usuario):
-        # Guarda la sesión, recupera el carrito propio del cliente y navega
-        # (el login ya mostró toast de bienvenida)
+        # Guarda la sesión, recupera el carrito propio y fusiona lo que el
+        # invitado ya había agregado (stock ya reservado, solo se traspasa).
+        invitados = list(self.carrito) if self.usuario_actual is None and self.carrito else []
         self.usuario_actual = usuario
         if usuario not in self.carritos:
             self.carritos[usuario] = []
         self.carrito = self.carritos[usuario]
-        self.mostrar_principal()
+        for g in invitados:
+            gid = g["producto"].id
+            for el in self.carrito:
+                if el["producto"].id == gid:
+                    el["cantidad"] += g["cantidad"]
+                    break
+            else:
+                self.carrito.append(g)
+        destino = self._destino_post_login or "principal"
+        self._destino_post_login = "principal"
+        if destino == "carrito":
+            self.mostrar_carrito()
+        else:
+            self.mostrar_principal()
 
     def _al_registrarse(self, datos_usuario):
-        # Los nuevos registros son siempre "normal"; guarda sesión y navega
+        # Los nuevos registros son siempre "normal"; mismo merge de invitado.
+        invitados = list(self.carrito) if self.usuario_actual is None and self.carrito else []
         self.usuario_actual = datos_usuario.get("correo")
         if self.usuario_actual not in self.carritos:
             self.carritos[self.usuario_actual] = []
         self.carrito = self.carritos[self.usuario_actual]
-        self.mostrar_principal()
+        for g in invitados:
+            gid = g["producto"].id
+            for el in self.carrito:
+                if el["producto"].id == gid:
+                    el["cantidad"] += g["cantidad"]
+                    break
+            else:
+                self.carrito.append(g)
+        destino = self._destino_post_login or "principal"
+        self._destino_post_login = "principal"
+        if destino == "carrito":
+            self.mostrar_carrito()
+        else:
+            self.mostrar_principal()
 
 
 if __name__ == "__main__":

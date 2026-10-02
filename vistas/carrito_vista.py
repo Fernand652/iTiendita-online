@@ -49,7 +49,7 @@ def _toast(parent, mensaje, tipo="error"):
 
 
 class carrito(tk.Frame):
-    def __init__(self, parent, on_volver=None, on_pagar=None, fn_calcular_total=None, usuario_actual=None, on_cerrar_sesion=None, on_agregar=None, on_restar=None, on_eliminar=None, on_vaciar=None, on_pagar_confirmado=None):
+    def __init__(self, parent, on_volver=None, on_pagar=None, fn_calcular_total=None, usuario_actual=None, on_cerrar_sesion=None, on_agregar=None, on_restar=None, on_eliminar=None, on_vaciar=None, on_pagar_confirmado=None, on_ir_login=None, on_exigir_login=None):
         super().__init__(parent, bg=BG_DARK)
         self.parent = parent
         self.on_volver = on_volver
@@ -64,6 +64,8 @@ class carrito(tk.Frame):
         self.on_eliminar = on_eliminar
         self.on_vaciar = on_vaciar
         self.on_pagar_confirmado = on_pagar_confirmado
+        self.on_ir_login = on_ir_login
+        self.on_exigir_login = on_exigir_login
         self.pack(fill="both", expand=True)
 
         self.lista_actual = []
@@ -91,11 +93,14 @@ class carrito(tk.Frame):
         btn_volver.bind("<Button-1>", lambda e: self.volver())
 
         btn_salir = tk.Label(
-            barra, text="SALIR", font=FUENTE_NAV,
+            barra, text="INICIAR SESIÓN" if self.usuario_actual is None else "SALIR", font=FUENTE_NAV,
             bg=GRAY_BTN, fg=WHITE, padx=15, pady=8, cursor="hand2"
         )
         btn_salir.pack(side="right", padx=(0, 10))
-        btn_salir.bind("<Button-1>", lambda e: self._cerrar_sesion())
+        if self.usuario_actual is None:
+            btn_salir.bind("<Button-1>", lambda e: self._ir_login())
+        else:
+            btn_salir.bind("<Button-1>", lambda e: self._cerrar_sesion())
 
         nombre = self.usuario_actual or "Invitado"
         tk.Label(
@@ -334,6 +339,14 @@ class carrito(tk.Frame):
         else:
             self._mostrar_mensaje("Cerrar sesión no disponible en vista aislada", tipo="info")
 
+    def _ir_login(self):
+        if self.on_ir_login:
+            self.on_ir_login()
+        elif self.on_exigir_login:
+            self.on_exigir_login()
+        else:
+            self._mostrar_mensaje("Inicia sesión para comprar", tipo="info")
+
     # SUBFUNCIONALIDAD ITEM 4: COMPROBANTE DE COMPRA
     def _generar_comprobante(self):
         modal = tk.Toplevel(self)
@@ -407,6 +420,17 @@ class carrito(tk.Frame):
     def pagar(self):
         if not self.lista_actual:
             self._mostrar_mensaje("Tu carrito está vacío, agrega productos primero", tipo="error")
+            return
+
+        # Invitado puede ver y agregar, pero para PAGAR exige login
+        if self.usuario_actual is None:
+            if self.on_exigir_login:
+                self.on_exigir_login()
+                return
+            if self.on_ir_login:
+                self.on_ir_login()
+                return
+            self._mostrar_mensaje("Inicia sesión para comprar", tipo="info")
             return
 
         self._limpiar_mensaje()

@@ -754,18 +754,10 @@ class PantallaAdmin(tk.Frame):
         if self.id_seleccionado is None:
             self._error("Selecciona un producto de la tabla primero")
             return
-    def _actualizar_solo_stock(self):
-        if self.id_seleccionado is None:
-            self._error("Selecciona un producto de la tabla primero ")
+        producto = self.inventario.buscar_por_id(self.id_seleccionado)
+        if producto is None:
+            self._error("El producto seleccionado ya no existe")
             return
-        try:
-            nuevo_stock=int(self.entry_stock.get())
-        except ValueError:
-            self._error("El stock debe ser un numero entero valido")
-            return
-        try:
-            self.inventario.actualizar_cantidad(self.id_seleccionado,nuevo_stock)
-            producto=self.inventario.buscar_por_id(self.id_seleccionado
         if not messagebox.askyesno("Confirmar eliminación", f"¿Seguro que quieres eliminar '{producto.nombre}'?"):
             return
 
@@ -780,6 +772,40 @@ class PantallaAdmin(tk.Frame):
         except Exception:
             pass
         _toast(self, f"Producto '{producto.nombre}' eliminado", tipo="exito")
+        self._refrescar_tabla()
+        self._limpiar_formulario()
+
+    def _actualizar_solo_stock(self):
+        """Actualiza solo el stock del producto seleccionado (sin tocar
+        nombre/precio/categoría/imagen). Usa actualizar_producto del modelo."""
+        if self.id_seleccionado is None:
+            self._error("Selecciona un producto de la tabla primero")
+            return
+        try:
+            nuevo_stock = int(self.entry_stock.get())
+        except ValueError:
+            self._error("El stock debe ser un numero entero valido")
+            return
+        if nuevo_stock < 0:
+            self._error("El stock no puede ser negativo")
+            return
+        producto = self.inventario.buscar_por_id(self.id_seleccionado)
+        if producto is None:
+            self._error("El producto seleccionado ya no existe")
+            return
+        try:
+            self.inventario.actualizar_producto(
+                self.id_seleccionado,
+                producto.nombre,
+                producto.precio,
+                nuevo_stock,
+                producto.categoria,
+                imagen=producto.imagen,
+            )
+        except ValueError as e:
+            self._error(str(e))
+            return
+        _toast(self, f"Stock de '{producto.nombre}' actualizado a {nuevo_stock}", tipo="exito")
         self._refrescar_tabla()
         self._limpiar_formulario()
 

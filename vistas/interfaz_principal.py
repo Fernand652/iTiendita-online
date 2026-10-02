@@ -148,7 +148,7 @@ class PantallaPrincipal(tk.Frame):
                            hace click en "Añadir al Carro".
     """
 
-    def __init__(self, parent, inventario=None, on_agregar_carro=None, on_ir_admin=None, on_ver_carrito=None, on_ir_explorar=None, usuario_actual=None, es_admin=False, on_cerrar_sesion=None):
+    def __init__(self, parent, inventario=None, on_agregar_carro=None, on_ir_admin=None, on_ver_carrito=None, on_ir_explorar=None, usuario_actual=None, es_admin=False, on_cerrar_sesion=None, on_ir_login=None):
         super().__init__(parent, bg=BG_DARK)
         # Acepta tanto lista de productos como instancia de Inventario
         if inventario is None:
@@ -164,6 +164,7 @@ class PantallaPrincipal(tk.Frame):
         self.usuario_actual = usuario_actual
         self.es_admin = bool(es_admin)
         self.on_cerrar_sesion = on_cerrar_sesion
+        self.on_ir_login = on_ir_login
 
         self._crear_navbar()
         self._crear_hero()
@@ -247,11 +248,20 @@ class PantallaPrincipal(tk.Frame):
         lbl_user.pack(side="left", padx=4)
 
         lbl_salir = tk.Label(
-            iconos, text="SALIR", font=FUENTE_NAV,
+            iconos, text="INICIAR SESIÓN" if self.usuario_actual is None else "SALIR", font=FUENTE_NAV,
             bg=GRAY_BTN, fg=WHITE, padx=12, pady=6, cursor="hand2"
         )
         lbl_salir.pack(side="left", padx=4)
-        lbl_salir.bind("<Button-1>", lambda e: self._cerrar_sesion())
+        if self.usuario_actual is None:
+            lbl_salir.bind("<Button-1>", lambda e: self._ir_login())
+        else:
+            lbl_salir.bind("<Button-1>", lambda e: self._cerrar_sesion())
+
+    def _ir_login(self):
+        if self.on_ir_login:
+            self.on_ir_login()
+        else:
+            self._mostrar_estado("Login no disponible en vista aislada", es_error=True)
 
     def _ir_admin(self):
         if self.on_ir_admin:

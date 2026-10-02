@@ -61,12 +61,13 @@ def _toast(parent, mensaje, tipo="error"):
 
 
 class PantallaLogin(tk.Frame):
-    def __init__(self, parent, on_login_exitoso=None, on_crear_cuenta=None, gestor_usuarios=None, on_ir_explorar=None, on_ver_carrito=None):
+    def __init__(self, parent, on_login_exitoso=None, on_crear_cuenta=None, gestor_usuarios=None, on_ir_explorar=None, on_ver_carrito=None, on_continuar_invitado=None):
         super().__init__(parent, bg=BG_DARK)
         self.on_login_exitoso = on_login_exitoso
         self.on_crear_cuenta = on_crear_cuenta
         self.on_ir_explorar = on_ir_explorar
         self.on_ver_carrito = on_ver_carrito
+        self.on_continuar_invitado = on_continuar_invitado
         if gestor_usuarios is not None:
             self.gestor_usuarios = gestor_usuarios
         elif GestorUsuarios is not None:
@@ -136,6 +137,14 @@ class PantallaLogin(tk.Frame):
         )
         crear_cuenta.pack(pady=(15, 0))
         crear_cuenta.bind("<Button-1>", lambda e: self._manejar_crear_cuenta())
+
+        invitado = tk.Label(
+            tarjeta, text="CONTINUAR COMO INVITADO",
+            font=(FUENTE_BODY[0], 10, "underline"),
+            bg=WHITE, fg="#5a5a5a", cursor="hand2"
+        )
+        invitado.pack(pady=(10, 0))
+        invitado.bind("<Button-1>", lambda e: self._manejar_continuar_invitado())
 
         self.label_info = tk.Label(
             tarjeta, text="", font=FUENTE_BODY,
@@ -264,6 +273,10 @@ class PantallaLogin(tk.Frame):
 
         if self.on_login_exitoso:
             self.after(400, lambda: self.on_login_exitoso(nombre))
+
+    def _manejar_continuar_invitado(self):
+        if self.on_continuar_invitado:
+            self.on_continuar_invitado()
 
 
 if __name__ == "__main__":

@@ -66,7 +66,7 @@ class PantallaExplorar(tk.Frame):
 
     COLUMNAS_POR_FILA = 3
 
-    def __init__(self, parent, inventario=None, on_volver=None, on_agregar_carro=None, filtro_inicial="", on_ver_carrito=None, usuario_actual=None, on_cerrar_sesion=None):
+    def __init__(self, parent, inventario=None, on_volver=None, on_agregar_carro=None, filtro_inicial="", on_ver_carrito=None, usuario_actual=None, on_cerrar_sesion=None, on_ir_login=None):
         super().__init__(parent, bg=BG_DARK)
         # Acepta instancia de Inventario o lista directa
         if inventario is None:
@@ -85,6 +85,7 @@ class PantallaExplorar(tk.Frame):
         self.on_ver_carrito = on_ver_carrito
         self.usuario_actual = usuario_actual
         self.on_cerrar_sesion = on_cerrar_sesion
+        self.on_ir_login = on_ir_login
 
         self._crear_barra_superior()
         self._crear_fila_rango()
@@ -118,11 +119,14 @@ class PantallaExplorar(tk.Frame):
         volver.bind("<Button-1>", lambda e: self.on_volver() if self.on_volver else None)
 
         salir = tk.Label(
-            barra, text="SALIR", font=FUENTE_NAV,
+            barra, text="INICIAR SESIÓN" if self.usuario_actual is None else "SALIR", font=FUENTE_NAV,
             bg=GRAY_BTN, fg=WHITE, padx=15, pady=8, cursor="hand2"
         )
         salir.pack(side="right", padx=(0, 10))
-        salir.bind("<Button-1>", lambda e: self._cerrar_sesion())
+        if self.usuario_actual is None:
+            salir.bind("<Button-1>", lambda e: self._ir_login())
+        else:
+            salir.bind("<Button-1>", lambda e: self._cerrar_sesion())
 
         nombre = self.usuario_actual or "Invitado"
         tk.Label(
@@ -272,6 +276,12 @@ class PantallaExplorar(tk.Frame):
             self.on_cerrar_sesion()
         else:
             self._mostrar_estado("Cerrar sesion no disponible en vista aislada", es_error=True)
+
+    def _ir_login(self):
+        if self.on_ir_login:
+            self.on_ir_login()
+        else:
+            self._mostrar_estado("Login no disponible en vista aislada", es_error=True)
 
     def _on_agregar(self, producto):
         """Wrapper que muestra el resultado de añadir EN PANTALLA."""

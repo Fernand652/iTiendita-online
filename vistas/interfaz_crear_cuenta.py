@@ -53,12 +53,13 @@ class PantallaCrearCuenta(tk.Frame):
         on_ir_a_login:      Función llamada al pulsar en 'INICIAR SESIÓN'.
     """
 
-    def __init__(self, parent, on_registro_exitoso=None, on_ir_a_login=None, gestor_usuarios=None, on_ir_explorar=None, on_ver_carrito=None):
+    def __init__(self, parent, on_registro_exitoso=None, on_ir_a_login=None, gestor_usuarios=None, on_ir_explorar=None, on_ver_carrito=None, on_continuar_invitado=None):
         super().__init__(parent, bg=BG_DARK)
         self.on_registro_exitoso = on_registro_exitoso
         self.on_ir_a_login = on_ir_a_login
         self.on_ir_explorar = on_ir_explorar
         self.on_ver_carrito = on_ver_carrito
+        self.on_continuar_invitado = on_continuar_invitado
         if gestor_usuarios is not None:
             self.gestor_usuarios = gestor_usuarios
         elif GestorUsuarios is not None:
@@ -167,6 +168,14 @@ class PantallaCrearCuenta(tk.Frame):
         iniciar_sesion.pack(pady=(10, 0))
         iniciar_sesion.bind("<Button-1>", lambda e: self._manejar_ir_a_login())
 
+        invitado = tk.Label(
+            tarjeta, text="CONTINUAR COMO INVITADO",
+            font=(FUENTE_BODY[0], 9, "underline"),
+            bg=WHITE, fg="#5a5a5a", cursor="hand2"
+        )
+        invitado.pack(pady=(10, 0))
+        invitado.bind("<Button-1>", lambda e: self._manejar_continuar_invitado())
+
     def _separador_or(self, parent):
         fila = tk.Frame(parent, bg=WHITE)
         fila.pack(fill="x", pady=8)
@@ -235,7 +244,7 @@ class PantallaCrearCuenta(tk.Frame):
     def _manejar_registro(self):
         nombres = self.entry_nombres.get().strip()
         apellidos = self.entry_apellidos.get().strip()
-        pais = self.entry_pais.get().strip()
+        pais = self.combo_pais.get().strip()
         if pais in ("Selecciona tu país",""):
             return self._mostrar_error("Debes seleccionar tu país")
         correo = self.entry_correo.get().strip()
@@ -247,7 +256,7 @@ class PantallaCrearCuenta(tk.Frame):
             return self._mostrar_error("Debes ingresar tus nombres")
         if apellidos == self.entry_apellidos.placeholder or not apellidos:
             return self._mostrar_error("Debes ingresar tus apellidos")
-        if pais == self.entry_pais.placeholder or not pais:
+        if not pais or pais == "Selecciona tu país":
             return self._mostrar_error("Debes ingresar tu país")
         if correo == self.entry_correo.placeholder or not correo:
             return self._mostrar_error("Debes ingresar un correo electrónico")
@@ -290,6 +299,10 @@ class PantallaCrearCuenta(tk.Frame):
     def _manejar_ir_a_login(self):
         if self.on_ir_a_login:
             self.on_ir_a_login()
+
+    def _manejar_continuar_invitado(self):
+        if self.on_continuar_invitado:
+            self.on_continuar_invitado()
 # PRUEBA INDEPENDIENTE
 if __name__ == "__main__":
     root = tk.Tk()
