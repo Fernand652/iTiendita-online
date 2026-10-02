@@ -33,3 +33,4 @@ Thumbs.db
 !data/*.csv
 data/productos.json
 data/usuarios.json
+data/ventas.json

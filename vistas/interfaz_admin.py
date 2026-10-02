@@ -54,12 +54,15 @@ class PantallaAdmin(tk.Frame):
     Parámetros:
         inventario:  instancia de Inventario a administrar. Si no se
                      entrega, se crea una nueva.
+        carritos:    dict {usuario: [items]} con los carritos por cliente
+                     para consumo del ADMIN (opción B, síncrono en memoria).
         on_volver:   función que se llama al hacer click en "VOLVER".
     """
 
-    def __init__(self, parent, inventario=None, on_volver=None, usuario_actual=None, on_cerrar_sesion=None):
+    def __init__(self, parent, inventario=None, carritos=None, on_volver=None, usuario_actual=None, on_cerrar_sesion=None):
         super().__init__(parent, bg=BG_DARK)
         self.inventario = inventario or Inventario()
+        self.carritos = carritos if carritos is not None else {}
         self.on_volver = on_volver
         self.usuario_actual = usuario_actual
         self.on_cerrar_sesion = on_cerrar_sesion
@@ -199,6 +202,76 @@ class PantallaAdmin(tk.Frame):
         self.label_valor_total.pack(anchor="w", pady=(12, 0))
 
         self._crear_reportes(panel)
+        self._crear_ventas(panel)
+
+    def _crear_ventas(self, parent):
+        """Sección Ventas y carritos por cliente (opción B, consumo del ADMIN)."""
+        marco = tk.Frame(parent, bg=DARK_CARD, padx=12, pady=12)
+        marco.pack(fill="x", pady=(12, 0))
+
+        tk.Label(
+            marco, text="Ventas y carritos por cliente", font=FUENTE_NAV,
+            bg=DARK_CARD, fg=GREEN,
+        ).pack(anchor="w", pady=(0, 8))
+
+        self.label_ventas = tk.Label(
+            marco, text="Sin ventas registradas", font=FUENTE_BODY,
+            bg=DARK_CARD, fg=WHITE, wraplength=480, justify="left",
+        )
+        self.label_ventas.pack(anchor="w", pady=(0, 4))
+
+        self.label_carritos = tk.Label(
+            marco, text="", font=FUENTE_BODY,
+            bg=DARK_CARD, fg=WHITE, wraplength=480, justify="left",
+        )
+        self.label_carritos.pack(anchor="w")
+
+        tk.Button(
+            marco, text="Actualizar", font=FUENTE_NAV,
+            bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
+            command=self._refrescar_tabla
+        ).pack(anchor="w", pady=(8, 0), ipadx=8, ipady=4)
+
+    def _resumen_ventas_carritos(self):
+        """Lee data/ventas.json + carritos en memoria para el ADMIN."""
+        try:
+            from persistencia.gestor_persistencia import (
+                RUTA_VENTAS_JSON,
+                cargar_json,
+            )
+        except ImportError:
+            try:
+                from gestor_persistencia import RUTA_VENTAS_JSON, cargar_json
+            except ImportError:
+                RUTA_VENTAS_JSON, cargar_json = None, None
+        total_ventas, texto_venta = 0, "Sin ventas registradas"
+        try:
+            if RUTA_VENTAS_JSON is not None and cargar_json is not None:
+                ventas = cargar_json(str(RUTA_VENTAS_JSON), default=[]) or []
+                total_ventas = len(ventas)
+                if ventas:
+                    ultima = ventas[-1]
+                    texto_venta = (
+                        f"Ventas: {total_ventas} | Última: "
+                        f"{ultima.get('cliente', '?')} "
+                        f"(${ultima.get('total', 0):,.0f}).".replace(",", ".")
+                    )
+                else:
+                    texto_venta = "Ventas: 0"
+        except Exception:
+            pass
+        partes = []
+        try:
+            for usuario, items in (self.carritos or {}).items():
+                n = sum(e.get("cantidad", 0) for e in items)
+                if n > 0:
+                    partes.append(f"{usuario}: {n} uds.")
+        except Exception:
+            pass
+        texto_carritos = (
+            "Carritos: " + (" | ".join(partes) if partes else "vacíos")
+        )
+        return texto_venta, texto_carritos
 
     def _crear_reportes(self, parent):
         """Sección Reportes por categoría: promedio y menor stock (Item 3)."""
@@ -278,8 +351,6 @@ class PantallaAdmin(tk.Frame):
         msg = f"Menor stock '{cat}': {prod.nombre} ({prod.stock} uds.)"
         self.label_reporte.config(text=msg)
         _toast(self, msg, tipo="exito")
-
-        self._crear_reportes(panel)
 
     def _crear_formulario(self, parent):
         panel = tk.Frame(parent, bg=DARK_CARD, padx=25, pady=25)
@@ -489,6 +560,11 @@ class PantallaAdmin(tk.Frame):
             self.combo_reporte["values"] = self.inventario.obtener_categorias()
             if actual not in list(self.combo_reporte["values"]) + ["Elige categoría"]:
                 self.combo_reporte.set("Elige categoría")
+
+        if hasattr(self, "label_ventas"):
+            texto_venta, texto_carritos = self._resumen_ventas_carritos()
+            self.label_ventas.config(text=texto_venta)
+            self.label_carritos.config(text=texto_carritos)
 
     def _al_seleccionar_fila(self, event):
         seleccion = self.tabla.selection()

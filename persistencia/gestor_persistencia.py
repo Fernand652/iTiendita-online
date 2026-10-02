@@ -16,6 +16,7 @@ RAIZ_PROYECTO = Path(__file__).resolve().parent.parent
 
 RUTA_PRODUCTOS_JSON = RAIZ_PROYECTO / "data" / "productos.json"
 RUTA_USUARIOS_JSON = RAIZ_PROYECTO / "data" / "usuarios.json"
+RUTA_VENTAS_JSON = RAIZ_PROYECTO / "data" / "ventas.json"
 # Legacy: solo se usa para migrar una vez, luego se elimina el CSV.
 RUTA_PRODUCTOS_CSV_LEGACY = RAIZ_PROYECTO / "data" / "productos.csv"
 

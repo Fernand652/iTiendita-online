@@ -107,6 +107,26 @@ class Inventario:
         self.productos.remove(producto)
         self._guardar()
         return True
+
+    def descontar_stock(self, id_producto, cantidad=1):
+        """Reserva stock al agregar al carrito: resta y autogarda. False si no hay."""
+        producto = self.buscar_por_id(id_producto)
+        if producto is None or cantidad < 1:
+            return False
+        if producto.stock < cantidad:
+            return False
+        producto.stock -= cantidad
+        self._guardar()
+        return True
+
+    def devolver_stock(self, id_producto, cantidad=1):
+        """Devuelve stock al quitar/vaciar el carrito: suma y autogarda."""
+        producto = self.buscar_por_id(id_producto)
+        if producto is None or cantidad < 1:
+            return False
+        producto.stock += cantidad
+        self._guardar()
+        return True
     def vaciar_inventario(self,ids_a_eliminar=None):
         if ids_a_eliminar is None:
             self.productos.clear()

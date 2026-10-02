@@ -49,7 +49,7 @@ def _toast(parent, mensaje, tipo="error"):
 
 
 class carrito(tk.Frame):
-    def __init__(self, parent, on_volver=None, on_pagar=None, fn_calcular_total=None, usuario_actual=None, on_cerrar_sesion=None):
+    def __init__(self, parent, on_volver=None, on_pagar=None, fn_calcular_total=None, usuario_actual=None, on_cerrar_sesion=None, on_agregar=None, on_restar=None, on_eliminar=None, on_vaciar=None, on_pagar_confirmado=None):
         super().__init__(parent, bg=BG_DARK)
         self.parent = parent
         self.on_volver = on_volver
@@ -57,6 +57,13 @@ class carrito(tk.Frame):
         self.fn_calcular_total = fn_calcular_total
         self.usuario_actual = usuario_actual
         self.on_cerrar_sesion = on_cerrar_sesion
+        # Callbacks de sincronía con inventario (main_gui, opción B).
+        # Si son None, la vista usa su lógica local (prueba aislada).
+        self.on_agregar = on_agregar
+        self.on_restar = on_restar
+        self.on_eliminar = on_eliminar
+        self.on_vaciar = on_vaciar
+        self.on_pagar_confirmado = on_pagar_confirmado
         self.pack(fill="both", expand=True)
 
         self.lista_actual = []
@@ -241,6 +248,16 @@ class carrito(tk.Frame):
         self._actualizar_totales()
 
     def _cambiar_cantidad(self, elemento, delta):
+        # Vía sincronizada: delega en main_gui (reserva/devuelve stock real)
+        if delta > 0 and self.on_agregar is not None:
+            ok, msg = self.on_agregar(elemento["producto"])
+            self._mostrar_mensaje(msg, tipo="exito" if ok else "error")
+            self.actualizar_carrito(self.lista_actual)
+            return
+        if delta < 0 and self.on_restar is not None:
+            nueva = self.on_restar(elemento)
+            self.actualizar_carrito(nueva if isinstance(nueva, list) else self.lista_actual)
+            return
         nueva = elemento["cantidad"] + delta
         if nueva <= 0:
             self._eliminar_producto(elemento)
@@ -251,11 +268,16 @@ class carrito(tk.Frame):
             self._mostrar_mensaje(f"Stock máximo disponible: {elemento['producto'].stock}", tipo="error")
 
     def _eliminar_producto(self, elemento):
+        # Vía sincronizada: devuelve el stock reservado al inventario
+        if self.on_eliminar is not None:
+            nueva = self.on_eliminar(elemento)
+            self.actualizar_carrito(nueva if isinstance(nueva, list) else self.lista_actual)
+            return
         if elemento in self.lista_actual:
             self.lista_actual.remove(elemento)
             self.actualizar_carrito(self.lista_actual)
 
-     def _actualizar_totales(self):
+    def _actualizar_totales(self):
         if not self.lista_actual:
             self.subtotal_actual = 0.0
             self.iva_actual = 0.0
@@ -287,6 +309,12 @@ class carrito(tk.Frame):
         self.mostrar_productos(productos)
 
     def vacia_todo(self):
+        # Vía sincronizada: restaura el stock de todo el carrito
+        if self.on_vaciar is not None:
+            self.on_vaciar()
+            self.actualizar_carrito([])
+            self._mostrar_mensaje("Carrito vaciado (stock restaurado)", tipo="info")
+            return
         if not self.lista_actual:
             self._mostrar_mensaje("Tu carrito ya está vacío", tipo="info")
             return
@@ -358,6 +386,14 @@ class carrito(tk.Frame):
 
         def confirmar():
             modal.destroy()
+            # Vía sincronizada (opción B): registra la venta y vacía SIN devolver stock
+            if self.on_pagar_confirmado is not None:
+                ok = self.on_pagar_confirmado()
+                if ok:
+                    self.lista_actual = []
+                    self.actualizar_carrito([])
+                    self._mostrar_mensaje("Venta registrada para el ADMIN", tipo="exito")
+                return
             if self.on_pagar:
                 # Avisa al flujo general para que el ADMIN o Sockets reciban la venta
                 self.on_pagar()
