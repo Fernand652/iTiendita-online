@@ -308,6 +308,17 @@ class PantallaExplorar(tk.Frame):
                 _GREEN = "green"
         self.lbl_estado.config(text=f"{n} de {total} productos", fg=_GREEN)
 
+    def refrescar(self):
+        """
+        Vuelve a aplicar los filtros con el inventario ACTUAL.
+
+        Lo llama RetroVaultApp cuando llega un catálogo nuevo por socket,
+        para que el stock que se muestra en pantalla no quede viejo.
+        """
+        if not hasattr(self, "entry_filtro"):
+            return
+        self._aplicar_filtro()
+
     def _aplicar_filtro(self, event=None):
         texto = self.entry_filtro.get().strip()
         min_txt = self.entry_min.get().strip()

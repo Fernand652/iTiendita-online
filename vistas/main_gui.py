@@ -229,10 +229,15 @@ class RetroVaultApp:
             # Somos el CLIENTE: el catálogo con el stock REAL.
             productos = mensaje.get("productos")
             if productos:
-                self.inventario.productos = [
+                nuevos = [
                     Producto.from_dict(d) for d in productos
                     if isinstance(d, dict) and "id" in d
                 ]
+                # OJO: se rellena la MISMA lista, sin asignar una nueva.
+                # PantallaPrincipal guarda una referencia a esta lista desde
+                # su __init__; si la reemplazáramos, esa pantalla seguiría
+                # mostrando el catálogo viejo y no se daría nunca cuenta.
+                self.inventario.productos[:] = nuevos
                 self._refrescar_todas()
         elif tipo == T_STOCK:
             producto = self.inventario.buscar_por_id(mensaje.get("id"))
@@ -278,16 +283,20 @@ class RetroVaultApp:
                 mostrar(self.carrito)
 
     def _refrescar_todas(self):
-        """Redibuja la pantalla del catálogo si es la que está visible."""
+        """
+        Redibuja la pantalla de catálogo que esté visible, si tiene refrescar().
+
+        Se usa cuando llega el catálogo del servidor: el inventario ya quedó
+        actualizado, esto sólo hace que la pantalla se entere.
+        """
         for hijo in self.contenedor.winfo_children():
-            for atributo in ("_cargar_productos", "_cargar", "_refrescar"):
-                metodo = getattr(hijo, atributo, None)
-                if callable(metodo):
-                    try:
-                        metodo()
-                    except Exception:
-                        pass
-                    return
+            refrescar = getattr(hijo, "refrescar", None)
+            if callable(refrescar):
+                try:
+                    refrescar()
+                except Exception:
+                    pass
+                return
 
     def _limpiar_contenedor(self):
         for widget in self.contenedor.winfo_children():

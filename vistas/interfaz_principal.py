@@ -397,6 +397,18 @@ class PantallaPrincipal(tk.Frame):
             tarjeta = TarjetaProducto(self.grid_catalogo, producto, on_agregar_carro=self._on_agregar)
             tarjeta.grid(row=0, column=i, padx=12)
 
+    def refrescar(self):
+        """
+        Redibuja el catálogo con el inventario ACTUAL.
+
+        Lo llama RetroVaultApp cuando llega un catálogo nuevo por socket: sin
+        esto el dato se actualiza pero la pantalla se queda con los números
+        viejos hasta que el usuario navega a otro lado.
+        """
+        if not hasattr(self, "grid_catalogo"):
+            return
+        self._filtrar_catalogo()
+
     def _filtrar_catalogo(self):
         texto = self.buscador.get().strip()
 
