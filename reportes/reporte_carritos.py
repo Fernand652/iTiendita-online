@@ -71,3 +71,27 @@ def guardar_reporte(texto, ruta=RUTA_REPORTE):
     with open(ruta, "w", encoding="utf-8") as archivo:
         archivo.write(texto)
     return ruta
+
+def normalizar_run(run): 
+    if not run:
+        return ""
+    limpio = str(run).replace(".","")
+    limpio = limpio.replace("-","").strip()
+    return limpio.upper()
+
+def buscar_ventas_por_clientes(ventas, run_cliente):
+    run_buscado = normalizar(run_cliente)
+    if not run_buscado:
+        return []
+        
+    resultado = []
+    for v in ventas:
+        run_v = normalizar_run(v.get("run_cliente", ""))
+        if run_v == run_buscado:
+            resultado.append(v)
+
+    resultado.sort(key(lambda x:str(.x.get("resultado","")))
+    return resultado
+
+def generar_historial_clientes(run_cliente, venta_cliente):
+    
