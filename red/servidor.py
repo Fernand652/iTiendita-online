@@ -460,9 +460,21 @@ class ServidorCarritos(threading.Thread):
         except Exception:
             fecha = ""
         try:
-            ventas = cargar_json(str(RUTA_VENTAS_JSON), default=[]) or []
-            ventas.append({"cliente": usuario, "fecha": fecha,
-                           "items": detalle, "total": total})
+            subtotal=float (total)
+            iva=subtotal*0.19
+            total_finalsubtotal+iva
+            ventas=cargar_json(str(RUTA_VENTAS_JSON), default=[]) or []
+            guardar_json(str(RUTA_VENTAS_JSON), ventas)
+            max_id=0
+            for v in ventas:
+                try:
+                    vid=int(v.get("id_venta",0) or 0)
+                except(ValueError,TypeError,AttributeError):
+                    vid=0
+                if vid>max_id:
+                    max_id=vid
+            ventas.append({"id_venta":max_id+1,"cliente": usuario, "fecha": fecha,
+                           "items": detalle, "subtotal": subtotal, "iva": iva, "total": total_final})
             guardar_json(str(RUTA_VENTAS_JSON), ventas)
         except Exception:
             pass   # que un problema de disco no tumbe la venta

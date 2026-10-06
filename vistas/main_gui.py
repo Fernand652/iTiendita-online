@@ -373,7 +373,16 @@ class RetroVaultApp:
         self.carrito.remove(elemento)
         self._notificar_carrito()
         return self.carrito
-
+    def _siguiente_id_venta(self,ventas):
+        max_id = 0
+        for v in ventas: 
+            try:
+                vid=int(v.get("id_venta",0) or 0)
+            except(ValueError, TypeError,AttributeError):
+                vid=0
+            if vid>max_id:
+                max_id=vid
+        return max_id+1
     def _vaciar_carrito(self):
         """Vacía el carrito del usuario activo y restaura el stock."""
         for elemento in list(self.carrito):
@@ -387,7 +396,7 @@ class RetroVaultApp:
     def _registrar_venta(self):
         """Guarda la venta en data/ventas.json para que el ADMIN la consuma."""
         if RUTA_VENTAS_JSON is None or cargar_json is None:
-            return
+            return None
         try:
             from datetime import datetime
             fecha = datetime.now().isoformat(timespec="seconds")
@@ -402,17 +411,24 @@ class RetroVaultApp:
             }
             for el in self.carrito
         ]
-        total = sum(float(i["precio"]) * i["cantidad"] for i in items)
+        subtotal=sum(float(i["precio"]) * i["cantidad"] for i in items)
+        iva=subtotal*0.19
+        total=subtotal+iva
         ventas = cargar_json(str(RUTA_VENTAS_JSON), default=[]) or []
+        id_venta = self._siguiente_id_venta(ventas)
         ventas.append(
             {
+                "id_venta": id_venta,
                 "cliente": self.usuario_actual,
                 "fecha": fecha,
                 "items": items,
+                "subtotal": subtotal,
+                "iva": iva,
                 "total": total,
             }
         )
         guardar_json(str(RUTA_VENTAS_JSON), ventas)
+        return id_venta
 
     def _confirmar_pago(self):
         """Confirma la venta: la registra y vacía SIN devolver stock."""
@@ -424,7 +440,7 @@ class RetroVaultApp:
             # va a corregir el carrito con T_CARRITO_ESTADO.
             self.conexion.pagar()
             return True
-        self._registrar_venta()
+        id_venta = self._registrar_venta()
         self.carrito.clear()
         return True
     # navegacion entre las 6 pantallas
