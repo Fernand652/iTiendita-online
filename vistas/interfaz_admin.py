@@ -394,6 +394,13 @@ class PantallaAdmin(tk.Frame):
         ).pack(fill="x", ipady=8, pady=4)
 
         tk.Button(
+            panel, text="Vaciar Inventario", font= FUENTE_NAV,
+            bg=GRAY_BTN, fg= WHITE, relief="flat", bd=0, cursor= "hand2",
+            command=self._vaciar_inventario
+        ).pack(fill="x", ipadx=6, pady=4)
+
+
+        tk.Button(
             panel, text="Limpiar formulario", font=FUENTE_NAV,
             bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
             command=self._limpiar_formulario
@@ -809,6 +816,29 @@ class PantallaAdmin(tk.Frame):
         self._refrescar_tabla()
         self._limpiar_formulario()
 
+    def _vaciar_inventario(self):
+        if not self.inventario.productos:
+            self._error("El inventario ya esta vacio")
+            return 
+        n=len(self.inventario.productos)
+        if not messagebox.askyesno(
+            "Vaciar inventario",
+            f"¿Eliminar los {n} productos del inventario?",
+        ):
+            return
+        imagenes= [(p.imagen or "").replace("\\","/") for p in self.inventario.productos]
+        self.inventario.vaciar_inventario()
+        for img in imagenes:
+            try:
+                if img.startswith("data/imagenes/"):
+                    abs_img=os.path.join(self._raiz_proyecto(),img)
+                    if os.path.exists(abs_img):
+                        os.remove(abs_img)
+            except Exception:
+                pass
+        _toast(self,f"Inventario vaciado ({n} productos)", tipo = "Exito")
+        self._refrescar_tabla()
+        self._limpiar_formulario
 
 # ==============================================================================
 # PRUEBA INDEPENDIENTE
