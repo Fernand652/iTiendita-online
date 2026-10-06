@@ -25,6 +25,7 @@ Ojo: HOST en red/protocolo.py tiene que ser la IP de la máquina donde corrió
 el ADMIN. Si prueban los dos en la misma máquina, 127.0.0.1 funciona.
 """
 
+import argparse
 import os
 import sys
 
@@ -38,10 +39,28 @@ from red.protocolo import HOST, PUERTO
 from vistas.main_gui import RetroVaultApp
 
 
+def _argumentos():
+    parser = argparse.ArgumentParser(
+        description="RetroVault - CLIENTE: se conecta al servidor del ADMIN."
+    )
+    parser.add_argument(
+        "--host", default=HOST, metavar="IP",
+        help=f"IP del ADMIN. Si el ADMIN corrió --host 0.0.0.0, usá acá su IP "
+             f"de red local (por defecto: {HOST}, misma máquina).",
+    )
+    parser.add_argument(
+        "--puerto", type=int, default=PUERTO, metavar="N",
+        help=f"puerto del ADMIN (por defecto: {PUERTO}).",
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = _argumentos()
+
     # Conectamos ANTES de abrir la app: si el ADMIN no está, el catálogo que
     # vería sería el de esta máquina y no el real.
-    conexion = ConexionServidor(HOST, PUERTO)
+    conexion = ConexionServidor(args.host, args.puerto)
     if not conexion.conectar():
         messagebox.showwarning(
             "Sin servidor",
@@ -68,7 +87,7 @@ def main():
     root.protocol("WM_DELETE_WINDOW", _al_cerrar)
 
     if conexion is not None:
-        print(f"[CLIENTE] Conectado a {HOST}:{PUERTO}")
+        print(f"[CLIENTE] Conectado a {args.host}:{args.puerto}")
         print("[CLIENTE] Esperando el catalogo del servidor...")
     else:
         print("[CLIENTE] Modo local: sin servidor, el stock no se sincroniza.")

@@ -25,8 +25,10 @@ Para que los compañeros se conecten desde otra máquina, en red/protocolo.py
 tiene que estar HOST con la IP de ESTA máquina (en Windows: ipconfig).
 """
 
+import argparse
 import os
 import sys
+import socket
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -39,14 +41,48 @@ from red.servidor import ServidorCarritos
 from vistas.main_gui import RetroVaultApp
 
 
+def _ip_lan():
+    """
+    Devuelve la IP de esta máquina en la red local, para que no haga falta
+    que el admin corra `ipconfig` a mano.
+
+    Para detectarla conectamos (sin enviar nada) a una dirección pública:
+    el SO responde con la IP de la interfaz que saldría. Si no hay red,
+    devolvemos None y listo.
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
+    except OSError:
+        return None
+
+
+def _argumentos():
+    parser = argparse.ArgumentParser(
+        description="RetroVault - ADMIN: levanta el servidor y abre el panel."
+    )
+    parser.add_argument(
+        "--host", default=HOST, metavar="IP",
+        help=f"ip donde ESCUCHAR. Usa 0.0.0.0 para aceptar clientes de otras "
+             f"máquinas (por defecto: {HOST}, sólo esta máquina).",
+    )
+    parser.add_argument(
+        "--puerto", type=int, default=PUERTO, metavar="N",
+        help=f"puerto del servidor (por defecto: {PUERTO}).",
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = _argumentos()
     root = tk.Tk()
 
     # El ADMIN es el dueño del catálogo: este Inventario autoguarda.
     inventario = Inventario()
 
     # El servidor corre en un hilo para que la ventana no se congele.
-    servidor = ServidorCarritos(inventario, host=HOST, puerto=PUERTO)
+    servidor = ServidorCarritos(inventario, host=args.host, puerto=args.puerto)
     servidor.start()
 
     app = RetroVaultApp(root, servidor=servidor)
@@ -67,8 +103,15 @@ def main():
             root.destroy()
     root.protocol("WM_DELETE_WINDOW", _al_cerrar)
 
-    print(f"[ADMIN] Servidor escuchando en {HOST}:{PUERTO}")
-    print("[ADMIN] Los CLIENTES deben apuntar a esa misma IP y puerto.")
+    print(f"[ADMIN] Servidor escuchando en {args.host}:{args.puerto}")
+    if args.host in ("127.0.0.1", "localhost"):
+        print("[ADMIN] Sólo acepta clientes de ESTA máquina.")
+        print('[ADMIN] Para red: py vistas/main_admin.py --host 0.0.0.0')
+    else:
+        ip = _ip_lan()
+        donde = f"{ip}:{args.puerto}" if ip else f"{args.host}:{args.puerto}"
+        print("[ADMIN] Para red local, los clientes usan:")
+        print(f"[ADMIN]   py vistas/main_cliente.py --host {donde}")
     root.mainloop()
 
 
