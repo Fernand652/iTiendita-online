@@ -93,5 +93,23 @@ def buscar_ventas_por_clientes(ventas, run_cliente):
     resultado.sort(key(lambda x:str(.x.get("resultado","")))
     return resultado
 
-def generar_historial_clientes(run_cliente, venta_cliente):
-    
+def generar_historial_clientes(run_cliente, ventas_cliente):
+    lineas = [
+        "=" * ANCHO,
+        f"HISTORIAL CLIENTE : {run_cliente]",
+        "=" * ANCHO,
+    ]
+    if not ventas_clientes:
+        lineas.append("")
+        lineas.append("SIN COMPRAS REGISTRADAS") 
+        lineas.append("=" * ANCHO)
+        return "\n".join(lineas)
+
+    total_acumulado = 0.0
+
+    for idx v in enumerate(ventas_clientes, 1):
+        fecha = v.get("FECHA","SIN FECHA")
+        monto = float(v.get("total",0.0))
+        total_acumulado += monto
+        lineas.append("")
+        
