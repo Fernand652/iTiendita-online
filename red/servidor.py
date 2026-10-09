@@ -443,7 +443,8 @@ class ServidorCarritos(threading.Thread):
                 subtotal = float(producto.precio) * cantidad
                 total += subtotal
                 detalle.append({"id": producto.id, "nombre": producto.nombre,
-                                "precio": producto.precio, "cantidad": cantidad})
+                                "precio": producto.precio, "cantidad": cantidad,
+                                "subtotal": subtotal})
 
             self._guardar_venta(usuario, detalle, total)
             self.carritos.pop(usuario, None)
@@ -451,6 +452,18 @@ class ServidorCarritos(threading.Thread):
         self._enviar(conexion, {"type": T_PAGO_OK, "total": total})
         self._enviar(conexion, {"type": T_CARRITO_ESTADO, "items": []})
         self._difundir_carritos()
+
+    def _siguiente_id_venta(self, ventas):
+        """Genera ID único: max(id_venta existente) + 1."""
+        max_id = 0
+        for v in ventas:
+            try:
+                vid = int(v.get("id_venta", 0) or 0)
+            except (ValueError, TypeError, AttributeError):
+                vid = 0
+            if vid > max_id:
+                max_id = vid
+        return max_id + 1
 
     def _guardar_venta(self, usuario, detalle, total):
         """Escribe la venta en data/ventas.json (la usa el panel del ADMIN)."""
@@ -460,24 +473,17 @@ class ServidorCarritos(threading.Thread):
         except Exception:
             fecha = ""
         try:
-            subtotal=float (total)
-            iva=subtotal*0.19
-            total_finalsubtotal+iva
-            ventas=cargar_json(str(RUTA_VENTAS_JSON), default=[]) or []
-            guardar_json(str(RUTA_VENTAS_JSON), ventas)
-            max_id=0
-            for v in ventas:
-                try:
-                    vid=int(v.get("id_venta",0) or 0)
-                except(ValueError,TypeError,AttributeError):
-                    vid=0
-                if vid>max_id:
-                    max_id=vid
-            ventas.append({"id_venta":max_id+1,"cliente": usuario, "fecha": fecha,
+            subtotal = float(total)
+            iva = subtotal * 0.19
+            total_final = subtotal + iva
+            ventas = cargar_json(str(RUTA_VENTAS_JSON), default=[]) or []
+            id_venta = self._siguiente_id_venta(ventas)
+            ventas.append({"id_venta": id_venta, "cliente": usuario, "fecha": fecha,
                            "items": detalle, "subtotal": subtotal, "iva": iva, "total": total_final})
             guardar_json(str(RUTA_VENTAS_JSON), ventas)
+            return id_venta
         except Exception:
-            pass   # que un problema de disco no tumbe la venta
+            return None   # que un problema de disco no tumbe la venta
 
     def _procesar_desconexion(self, conexion, usuario):
         """

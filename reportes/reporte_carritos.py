@@ -83,11 +83,15 @@ def buscar_ventas_por_clientes(ventas, run_cliente):
     run_buscado = normalizar_run(run_cliente)
     if not run_buscado:
         return []
-        
+
+    buscado_plano = str(run_cliente or "").strip().lower()
     resultado = []
     for v in ventas:
-        run_v = normalizar_run(v.get("run_cliente", ""))
-        if run_v == run_buscado:
+        # Compat: ventas nuevas guardan "cliente", legacy usaba "run_cliente".
+        valor = v.get("run_cliente", "") or v.get("cliente", "")
+        if normalizar_run(valor) == run_buscado:
+            resultado.append(v)
+        elif str(valor or "").strip().lower() == buscado_plano:
             resultado.append(v)
 
     resultado.sort(key=lambda x: str(x.get("fecha","")))
@@ -109,21 +113,43 @@ def generar_historial_clientes(run_cliente, ventas_cliente):
 
     for idx, v in enumerate(ventas_cliente, 1):
         fecha = v.get("fecha","Sin fecha")
-        monto = float(v.get("total",0.0))
+        try:
+            monto = float(v.get("total",0.0))
+        except (TypeError, ValueError):
+            monto = 0.0
         total_acumulado += monto
+        id_venta = v.get("id_venta", idx)
 
         lineas.append("")
-        lineas.append(f"Venta #{idx} | Fecha: {fecha}")
+        lineas.append(f"Venta #{id_venta} | Fecha: {fecha}")
         lineas.append("-" * ANCHO)
 
-        for prod in v.get("productos", []):
+        # Compat: ventas nuevas guardan "items", legacy usaba "productos".
+        productos = v.get("items", []) or v.get("productos", [])
+        for prod in productos:
             nom = prod.get("nombre", "Producto")
             if len(nom) > 28:
                 nom = nom[:25] + "..."
-            cant = prod.get("cantidad", 1)
-            precio = float(prod.get("precio", 0.0)) * cant
+            try:
+                cant = int(prod.get("cantidad", 1))
+            except (TypeError, ValueError):
+                cant = 1
+            try:
+                precio = float(prod.get("subtotal", float(prod.get("precio", 0.0)) * cant))
+            except (TypeError, ValueError):
+                precio = 0.0
             lineas.append(f"  - {nom:<28} x{cant:<3} {_peso(precio):>12}")
 
+        try:
+            subtotal = float(v.get("subtotal", monto / 1.19 if monto else 0.0))
+        except (TypeError, ValueError, ZeroDivisionError):
+            subtotal = 0.0
+        try:
+            iva = float(v.get("iva", monto - subtotal))
+        except (TypeError, ValueError):
+            iva = 0.0
+        lineas.append(f"  {'Subtotal':<34} {_peso(subtotal):>12}")
+        lineas.append(f"  {'IVA (19%)':<34} {_peso(iva):>12}")
         lineas.append(f"  {'Total venta':<34} {_peso(monto):>12}")
 
     lineas.append("")
