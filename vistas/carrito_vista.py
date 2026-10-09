@@ -38,6 +38,18 @@ except ImportError:
     except ImportError:
         mostrar_toast = None
 
+try:
+    from modelos.venta import Venta
+    from persistencia.gestor_ventas import registrar_venta, cargar_ventas
+except ImportError:
+    try:
+        from venta import Venta
+        from gestor_ventas import registrar_venta, cargar_ventas
+    except ImportError:
+        Venta = None
+        registrar_venta = None
+        cargar_ventas = None
+
 
 def _toast(parent, mensaje, tipo="error"):
     if mostrar_toast is None:
@@ -152,6 +164,10 @@ class carrito(tk.Frame):
         tk.Label(fila_total, text="TOTAL", font=FUENTE_PRECIO, bg=DARK_CARD, fg=WHITE).pack(side="left")
         self.lbl_total = tk.Label(fila_total, text="$0,00", font=FUENTE_HERO, bg=DARK_CARD, fg=GREEN)
         self.lbl_total.pack(side="right")
+
+        tk.Label(resumen, text="RUN CLIENTE (OPCIONAL):", font=FUENTE_CATEGORIA, bg=DARK_CARD, fg=GRAY_TEXT).pack(anchor="w", pady=(0, 4))
+        self.entry_run = tk.Entry(resumen, font=FUENTE_BODY, bg=BG_DARK, fg=WHITE, insertbackground=WHITE, relief="flat")
+        self.entry_run.pack(fill="x", ipady=6, pady=(0, 15))
 
         # Botón Pagar / Confirmar venta
         tk.Button(
@@ -399,7 +415,32 @@ class carrito(tk.Frame):
 
         def confirmar():
             modal.destroy()
-            # Vía sincronizada (opción B): registra la venta y vacía SIN devolver stock
+
+            run_cliente = self.entry_run.get().strip() if hasattr(self, 'entry_run') else ""
+            if not run_cliente:
+                run_cliente = self.usuario_actual or "Anonimo"
+
+            prods_venta = []
+            for el in self.lista_actual:
+                p = el["producto"]
+                prods_venta.append({
+                    "id": getattr(p, "id", 0),
+                    "nombre": getattr(p, "nombre", "Producto"),
+                    "precio": float(getattr(p, "precio", 0.0)),
+                    "cantidad": int(el["cantidad"])
+                })
+
+           
+            if Venta is not None and registrar_venta is not None:
+                id_nueva = len(cargar_ventas()) + 1 if cargar_ventas else 1
+                nueva_venta = Venta(
+                    id_venta=id_nueva,
+                    run_cliente=run_cliente,
+                    productos=prods_venta,
+                    total=self.total_actual
+                )
+                registrar_venta(nueva_venta.to_dict())
+
             if self.on_pagar_confirmado is not None:
                 ok = self.on_pagar_confirmado()
                 if ok:
@@ -407,10 +448,10 @@ class carrito(tk.Frame):
                     self.actualizar_carrito([])
                     self._mostrar_mensaje("Venta registrada para el ADMIN", tipo="exito")
                 return
-            if self.on_pagar:
-                # Avisa al flujo general para que el ADMIN o Sockets reciban la venta
-                self.on_pagar()
 
+            if self.on_pagar:
+                self.on_pagar()
+                
         tk.Button(
             modal, text="ACEPTAR", font=FUENTE_BOTON,
             bg=GREEN, fg=BLACK, activebackground=GREEN_HOVER,
