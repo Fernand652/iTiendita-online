@@ -111,5 +111,28 @@ def generar_historial_clientes(run_cliente, ventas_cliente):
         fecha = v.get("FECHA","SIN FECHA")
         monto = float(v.get("total",0.0))
         total_acumulado += monto
+
         lineas.append("")
+        lineas.append(f"Venta #{idx} | Fecha: {fecha}")
+        lineas.append("-" * ANCHO)
+
+        for prod in v.get("productos", []):
+            nom = prod.get("nombre", "Producto")
+            if len(nom) > 28:
+                nom = nom[:25] + "..."
+            cant = prod.get("cantidad", 1)
+            precio = float(prod.get("precio", 0.0)) * cant
+            lineas.append(f"  - {nom:<28} x{cant:<3} {_peso(precio):>12}")
+
+        lineas.append(f"  {'Total venta':<34} {_peso(monto):>12}")
+
+    lineas.append("")
+    lineas.append("=" * ANCHO)
+    lineas.append(f"Total compras:        {len(ventas_cliente)}")
+    lineas.append(f"MONTO TOTAL HISTORICO:{_peso(total_acumulado):>14}")
+    lineas.append("=" * ANCHO)
+
+    return "\n".join(lineas)
+            
+             
         
