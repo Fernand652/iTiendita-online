@@ -80,7 +80,7 @@ def normalizar_run(run):
     return limpio.upper()
 
 def buscar_ventas_por_clientes(ventas, run_cliente):
-    run_buscado = normalizar(run_cliente)
+    run_buscado = normalizar_run(run_cliente)
     if not run_buscado:
         return []
         
@@ -90,16 +90,16 @@ def buscar_ventas_por_clientes(ventas, run_cliente):
         if run_v == run_buscado:
             resultado.append(v)
 
-    resultado.sort(key(lambda x:str(.x.get("resultado","")))
+    resultado.sort(key=lambda x: str(x.get("fecha","")))
     return resultado
 
 def generar_historial_clientes(run_cliente, ventas_cliente):
     lineas = [
         "=" * ANCHO,
-        f"HISTORIAL CLIENTE : {run_cliente]",
+        f"HISTORIAL CLIENTE : {run_cliente}",
         "=" * ANCHO,
     ]
-    if not ventas_clientes:
+    if not ventas_cliente:
         lineas.append("")
         lineas.append("SIN COMPRAS REGISTRADAS") 
         lineas.append("=" * ANCHO)
@@ -107,8 +107,8 @@ def generar_historial_clientes(run_cliente, ventas_cliente):
 
     total_acumulado = 0.0
 
-    for idx v in enumerate(ventas_clientes, 1):
-        fecha = v.get("FECHA","SIN FECHA")
+    for idx, v in enumerate(ventas_cliente, 1):
+        fecha = v.get("fecha","Sin fecha")
         monto = float(v.get("total",0.0))
         total_acumulado += monto
 
