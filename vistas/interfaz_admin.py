@@ -176,6 +176,10 @@ class PantallaAdmin(tk.Frame):
         estilo.configure("Treeview.Heading", background=GRAY_BTN, foreground=WHITE, font=FUENTE_NAV)
         estilo.map("Treeview", background=[("selected", GREEN)], foreground=[("selected", BLACK)])
 
+        # La misma tabla alterna entre el inventario y los carritos activos.
+        # Así el administrador no pierde espacio en otra ventana ni necesita
+        # abrir un reporte para ver lo que ocurre en las cajas.
+        self._vista_carritos = False
         columnas = ("id", "nombre", "precio", "stock", "categoria", "foto")
         self.tabla = ttk.Treeview(panel, columns=columnas, show="headings", height=15)
 
@@ -196,733 +200,83 @@ class PantallaAdmin(tk.Frame):
         self.tabla.pack(fill="both", expand=True)
         self.tabla.bind("<<TreeviewSelect>>", self._al_seleccionar_fila)
 
+        fila_vista = tk.Frame(panel, bg=BG_DARK)
+        fila_vista.pack(fill="x", pady=(12, 0))
+
         self.label_valor_total = tk.Label(
-            panel, text="", font=FUENTE_PRECIO, bg=BG_DARK, fg=GREEN
+            fila_vista, text="", font=FUENTE_PRECIO, bg=BG_DARK, fg=GREEN
         )
-        self.label_valor_total.pack(anchor="w", pady=(12, 0))
+        self.label_valor_total.pack(side="left")
+
+        self.btn_carritos = tk.Button(
+            fila_vista, text="VER CARRITOS ACTIVOS", font=FUENTE_NAV,
+            bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
+            command=self._alternar_vista_carritos,
+        )
+        self.btn_carritos.pack(side="right", ipadx=8, ipady=4)
 
         self._crear_reportes(panel)
-        self._crear_ventas(panel)
 
-    def _crear_ventas(self, parent):
-        """Sección Ventas y carritos por cliente (opción B, consumo del ADMIN)."""
-        marco = tk.Frame(parent, bg=DARK_CARD, padx=12, pady=12)
-        marco.pack(fill="x", pady=(12, 0))
+    def _alternar_vista_carritos(self):
+        """Cambia la tabla central entre stock y carritos en curso."""
+        self._vista_carritos = not self._vista_carritos
+        self.id_seleccionado = None
+        self._refrescar_tabla()
 
-        tk.Label(
-            marco, text="Ventas y carritos por cliente", font=FUENTE_NAV,
-            bg=DARK_CARD, fg=GREEN,
-        ).pack(anchor="w", pady=(0, 8))
+    def _configurar_columnas_inventario(self):
+        encabezados = {
+            "id": ("ID", 40, "center"), "nombre": ("Nombre", 200, "w"),
+            "precio": ("Precio", 90, "e"), "stock": ("Stock", 70, "center"),
+            "categoria": ("Categoría", 110, "w"), "foto": ("📷", 40, "center"),
+        }
+        for columna, (texto, ancho, ancla) in encabezados.items():
+            self.tabla.heading(columna, text=texto)
+            self.tabla.column(columna, width=ancho, anchor=ancla, stretch=columna == "nombre")
 
-        self.label_ventas = tk.Label(
-            marco, text="Sin ventas registradas", font=FUENTE_BODY,
-            bg=DARK_CARD, fg=WHITE, wraplength=480, justify="left",
-        )
-        self.label_ventas.pack(anchor="w", pady=(0, 4))
+    def _configurar_columnas_carritos(self):
+        encabezados = {
+            "id": ("Cliente", 130, "w"), "nombre": ("Producto", 210, "w"),
+            "precio": ("Cantidad", 80, "center"), "stock": ("Estado", 110, "center"),
+            "categoria": ("", 0, "w"), "foto": ("", 0, "w"),
+        }
+        for columna, (texto, ancho, ancla) in encabezados.items():
+            self.tabla.heading(columna, text=texto)
+            self.tabla.column(columna, width=ancho, anchor=ancla, stretch=columna in ("id", "nombre"))
 
-        self.label_carritos = tk.Label(
-            marco, text="", font=FUENTE_BODY,
-            bg=DARK_CARD, fg=WHITE, wraplength=480, justify="left",
-        )
-        self.label_carritos.pack(anchor="w")
+    def _items_carrito(self, items):
+        """Acepta tanto carritos locales como la foto simple que llega por red."""
+        for item in items or []:
+            if not isinstance(item, dict):
+                continue
+            cantidad = int(item.get("cantidad", 0) or 0)
+            producto = item.get("producto")
+            if producto is not None:
+                yield producto.nombre, cantidad
+                continue
+            producto = self.inventario.buscar_por_id(item.get("id"))
+            yield (producto.nombre if producto is not None else f"Producto #{item.get('id', '?')}"), cantidad
 
-        fila_hist = tk.Frame(marco, bg=DARK_CARD)
-        fila_hist.pack(fill="x", pady=(8, 0))
-        tk.Label(
-            fila_hist, text="Historial cliente (RUN/email):", font=FUENTE_NAV,
-            bg=DARK_CARD, fg=GRAY_TEXT,
-        ).pack(side="left")
-        self.entry_historial = tk.Entry(fila_hist, font=FUENTE_BODY, width=22, relief="flat", bd=4)
-        self.entry_historial.pack(side="left", padx=(8, 8), ipady=2)
-        tk.Button(
-            fila_hist, text="Buscar", font=FUENTE_NAV,
-            bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
-            command=self._buscar_historial
-        ).pack(side="left", ipadx=8, ipady=4)
-        self.label_historial = tk.Label(
-            marco, text="", font=FUENTE_BODY,
-            bg=DARK_CARD, fg=WHITE, wraplength=480, justify="left",
-        )
-        self.label_historial.pack(anchor="w", pady=(4, 0))
-
-        tk.Button(
-            marco, text="Actualizar", font=FUENTE_NAV,
-            bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
-            command=self._refrescar_tabla
-        ).pack(anchor="w", pady=(8, 0), ipadx=8, ipady=4)
-
-    def _resumen_ventas_carritos(self):
-        """Lee data/ventas.json + carritos en memoria para el ADMIN."""
-        try:
-            from persistencia.gestor_persistencia import (
-                RUTA_VENTAS_JSON,
-                cargar_json,
-            )
-        except ImportError:
-            try:
-                from gestor_persistencia import RUTA_VENTAS_JSON, cargar_json
-            except ImportError:
-                RUTA_VENTAS_JSON, cargar_json = None, None
-        total_ventas, texto_venta = 0, "Sin ventas registradas"
-        try:
-            if RUTA_VENTAS_JSON is not None and cargar_json is not None:
-                ventas = cargar_json(str(RUTA_VENTAS_JSON), default=[]) or []
-                total_ventas = len(ventas)
-                if ventas:
-                    ultima = ventas[-1]
-                    texto_venta = (
-                        f"Ventas: {total_ventas} | Última: "
-                        f"{ultima.get('cliente', '?')} "
-                        f"(${ultima.get('total', 0):,.0f}).".replace(",", ".")
-                    )
-                else:
-                    texto_venta = "Ventas: 0"
-        except Exception:
-            pass
-        partes = []
+        filas = []
         try:
             for usuario, items in (self.carritos or {}).items():
-                if not items:
-                    continue
+                if not items: continue
                 detalle = []
                 for e in items:
                     if isinstance(e, dict):
                         if "producto" in e:
-                            p = e["producto"]
-                            nom = getattr(p, "nombre", "Producto")
+                            p = e["producto"]; nom = getattr(p, "nombre", "Prod")
                         else:
-                            pid = e.get("id")
-                            nom = str(pid) if pid is not None else "Producto"
-                            try:
-                                prod = self.inventario.buscar_por_id(pid)
-                                if prod and getattr(prod, "nombre", None):
-                                    nom = prod.nombre
-                            except Exception:
-                                pass
+                            pid = e.get("id"); nom = str(pid) if pid is not None else "Prod"
                         c = int(e.get("cantidad", 0))
                     else:
-                        c = 0
-                        nom = "Producto"
-                    if c:
-                        detalle.append(f"{c} {nom}")
+                        c = 0; nom = "Prod"
+                    if c: detalle.append(f"{c} {nom}")
                 if detalle:
-                    partes.append(f"{usuario}: " + " | ".join(detalle))
+                    filas.append((usuario, " | ".join(detalle)))
         except Exception:
-            pass
-        texto_carritos = (
-            "Carritos: " + (" | ".join(partes) if partes else "vacíos")
-        )
-        return texto_venta, texto_carritos
-
-    def _buscar_historial(self):
-        """Hito 2.6 CLIENTE: filtra ventas por RUN/email y ordena por fecha."""
-        texto = (self.entry_historial.get() or "").strip().lower()
-        if not texto:
-            self.label_historial.config(text="Ingresa un RUN o email para buscar")
-            return
-        try:
-            from persistencia.gestor_persistencia import RUTA_VENTAS_JSON, cargar_json
-        except ImportError:
-            try:
-                from gestor_persistencia import RUTA_VENTAS_JSON, cargar_json
-            except ImportError:
-                RUTA_VENTAS_JSON, cargar_json = None, None
-        ventas = []
-        try:
-            if RUTA_VENTAS_JSON is not None and cargar_json is not None:
-                ventas = cargar_json(str(RUTA_VENTAS_JSON), default=[]) or []
-        except Exception:
-            ventas = []
-        mias = [v for v in ventas if str(v.get("cliente", "")).strip().lower() == texto or str(v.get("run", "")).strip().lower() == texto]
-        mias.sort(key=lambda v: str(v.get("fecha", "")))
-        if not mias:
-            msg = f"Sin compras para '{texto}' (busca por email o RUN)"
-            self.label_historial.config(text=msg)
-            _toast(self, msg, tipo="info")
-            return
-        total = sum(float(v.get("total", 0)) for v in mias)
-        lineas = [f"{v.get('fecha','?')} [{v.get('cliente','?')}" + (f" RUN:{v.get('run')}" if str(v.get('run','')).strip() else "") + f"]: {sum(i.get('cantidad',0) for i in v.get('items',[]))} uds. ${float(v.get('total',0)):,.0f}".replace(",", ".") for v in mias[-5:]]
-        msg = f"{len(mias)} compras | Total: ${total:,.0f}".replace(",", ".") + "\n" + "\n".join(lineas)
-        self.label_historial.config(text=msg)
-        _toast(self, f"Historial '{texto}': {len(mias)} compras", tipo="exito")
-
-    def _crear_reportes(self, parent):
-        """Sección Reportes por categoría: promedio y menor stock (Item 3)."""
-        marco = tk.Frame(parent, bg=DARK_CARD, padx=12, pady=12)
-        marco.pack(fill="x", pady=(12, 0))
-
-        tk.Label(
-            marco, text="Reportes por categoría", font=FUENTE_NAV,
-            bg=DARK_CARD, fg=GREEN,
-        ).pack(anchor="w", pady=(0, 8))
-
-        fila = tk.Frame(marco, bg=DARK_CARD)
-        fila.pack(fill="x")
-
-        self.combo_reporte = ttk.Combobox(
-            fila, font=FUENTE_BODY, width=22, state="readonly",
-            values=self.inventario.obtener_categorias(),
-        )
-        self.combo_reporte.pack(side="left", padx=(0, 8))
-        self.combo_reporte.set("Elige categoría")
-
-        tk.Button(
-            fila, text="Promedio", font=FUENTE_NAV,
-            bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
-            command=self._reporte_promedio
-        ).pack(side="left", padx=4, ipadx=8, ipady=4)
-
-        tk.Button(
-            fila, text="Menor stock", font=FUENTE_NAV,
-            bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
-            command=self._reporte_menor_stock
-        ).pack(side="left", padx=4, ipadx=8, ipady=4)
-
-        self.label_reporte = tk.Label(
-            marco, text="", font=FUENTE_BODY,
-            bg=DARK_CARD, fg=WHITE, wraplength=480, justify="left",
-        )
-        self.label_reporte.pack(anchor="w", pady=(8, 0))
-
-    def _categoria_reporte(self):
-        """Categoría elegida o None (con error en pantalla)."""
-        cat = self.combo_reporte.get().strip()
-        if not cat or cat == "Elige categoría":
-            self._error("Elige una categoría para el reporte")
-            return None
-        return cat
-
-    @staticmethod
-    def _fmt_clp(valor):
-        return f"${valor:,.0f}".replace(",", ".")
-
-    def _reporte_promedio(self):
-        cat = self._categoria_reporte()
-        if cat is None:
-            return
-        prom = self.inventario.calcular_promedio_categoria(cat)
-        if prom is None:
-            msg = f"Sin productos en '{cat}'"
-            self.label_reporte.config(text=msg)
-            _toast(self, msg, tipo="error")
-            return
-        n = sum(1 for p in self.inventario.productos if p.categoria.lower() == cat.lower())
-        msg = f"Promedio '{cat}': {self._fmt_clp(prom)} ({n} productos)"
-        self.label_reporte.config(text=msg)
-        _toast(self, msg, tipo="exito")
-
-    def _reporte_menor_stock(self):
-        cat = self._categoria_reporte()
-        if cat is None:
-            return
-        prod = self.inventario.producto_menor_stock_categoria(cat)
-        if prod is None:
-            msg = f"Sin productos en '{cat}'"
-            self.label_reporte.config(text=msg)
-            _toast(self, msg, tipo="error")
-            return
-        msg = f"Menor stock '{cat}': {prod.nombre} ({prod.stock} uds.)"
-        self.label_reporte.config(text=msg)
-        _toast(self, msg, tipo="exito")
-
-    def _crear_formulario(self, parent):
-        panel = tk.Frame(parent, bg=DARK_CARD, padx=25, pady=25)
-        panel.pack(fill="both", expand=True)
-
-        tk.Label(
-            panel, text="Selecciona una fila para editar o eliminar",
-            font=(FUENTE_BODY[0], 9, "italic"), bg=DARK_CARD, fg=GRAY_TEXT,
-            wraplength=250, justify="left",
-        ).pack(anchor="w", pady=(0, 8))
-
-        self.titulo_formulario = tk.Label(
-            panel, text="Nuevo Producto", font=FUENTE_TITULO, bg=DARK_CARD, fg=WHITE
-        )
-        self.titulo_formulario.pack(pady=(0, 20), anchor="w")
-
-        self.entry_id = self._campo_texto(panel, "ID (vacío = automático)")
-        self.entry_nombre = self._campo_texto(panel, "Nombre")
-        self.entry_precio = self._campo_texto(panel, "Precio (CLP)")
-        self.entry_stock = self._campo_texto(panel, "Stock")
-        self.entry_categoria = self._campo_categoria(panel)
-        self._campo_imagen(panel)
-
-        self.label_error = tk.Label(
-            panel, text="", font=(FUENTE_BODY[0], 9),
-            bg=DARK_CARD, fg="#ff6b6b", wraplength=220, justify="left"
-        )
-        self.label_error.pack(anchor="w", pady=(8, 8))
-
-        self.btn_guardar = tk.Button(
-            panel, text="Agregar Producto", font=FUENTE_BOTON,
-            bg=GREEN, fg=BLACK, relief="flat", bd=0, cursor="hand2",
-            command=self._guardar
-        )
-        self.btn_guardar.pack(fill="x", ipady=8, pady=4)
-
-        tk.Button(
-            panel, text="Eliminar seleccionado", font=FUENTE_BOTON,
-            bg="#c0392b", fg=WHITE, relief="flat", bd=0, cursor="hand2",
-            command=self._eliminar
-        ).pack(fill="x", ipady=8, pady=4)
-
-        tk.Button(
-            panel, text="Vaciar Inventario", font= FUENTE_NAV,
-            bg=GRAY_BTN, fg= WHITE, relief="flat", bd=0, cursor= "hand2",
-            command=self._vaciar_inventario
-        ).pack(fill="x", ipadx=6, pady=4)
-
-
-        tk.Button(
-            panel, text="Limpiar formulario", font=FUENTE_NAV,
-            bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
-            command=self._limpiar_formulario
-        ).pack(fill="x", ipady=6, pady=(15, 0))
-
-    def _campo_texto(self, parent, etiqueta):
-        tk.Label(parent, text=etiqueta, font=FUENTE_NAV, bg=DARK_CARD, fg=GRAY_TEXT).pack(anchor="w", pady=(8, 2))
-        entry = tk.Entry(parent, font=FUENTE_BODY, relief="flat", bd=4)
-        entry.pack(fill="x", ipady=4)
-        return entry
-
-    def _campo_categoria(self, parent):
-        """
-        Combobox en vez de Entry normal: muestra las categorías que ya
-        existen (para elegir con un click) pero también permite escribir
-        una nueva. Esto evita que Item 3 (promedio/menor stock por
-        categoría) falle por errores de tipeo como "Videojuegos" vs
-        "videojuegos " con espacio de más.
-        """
-        tk.Label(parent, text="Categoría", font=FUENTE_NAV, bg=DARK_CARD, fg=GRAY_TEXT).pack(anchor="w", pady=(8, 2))
-        combo = ttk.Combobox(parent, font=FUENTE_BODY, values=self.inventario.obtener_categorias())
-        combo.pack(fill="x", ipady=2)
-        return combo
-
-    def _campo_imagen(self, parent):
-        """Fila Imagen PNG: preview + Examinar/Quitar. Guarda en data/imagenes/."""
-        tk.Label(parent, text="Imagen (PNG)", font=FUENTE_NAV, bg=DARK_CARD, fg=GRAY_TEXT).pack(anchor="w", pady=(8, 2))
-        fila = tk.Frame(parent, bg=DARK_CARD)
-        fila.pack(fill="x")
-
-        self.entry_imagen = tk.Entry(parent, font=FUENTE_BODY, relief="flat", bd=4, state="readonly")
-        self.entry_imagen.pack(fill="x", ipady=4)
-
-        btns = tk.Frame(parent, bg=DARK_CARD)
-        btns.pack(fill="x", pady=(4, 0))
-        tk.Button(
-            btns, text="Examinar PNG", font=FUENTE_NAV,
-            bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
-            command=self._examinar_imagen
-        ).pack(side="left", expand=True, fill="x", padx=(0, 4), ipady=4)
-        tk.Button(
-            btns, text="Quitar", font=FUENTE_NAV,
-            bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
-            command=self._quitar_imagen
-        ).pack(side="left", expand=True, fill="x", padx=(4, 0), ipady=4)
-
-        self.lbl_preview = tk.Label(parent, text="Sin imagen", font=FUENTE_BODY, bg="#e4e4e4", fg=GRAY_TEXT, width=28, height=4)
-        self.lbl_preview.pack(fill="x", pady=(8, 0))
-
-    def _raiz_proyecto(self):
-        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-    def _dir_imagenes(self):
-        d = os.path.join(self._raiz_proyecto(), "data", "imagenes")
-        os.makedirs(d, exist_ok=True)
-        return d
-
-    def _set_entry_imagen(self, texto):
-        self.entry_imagen.config(state="normal")
-        self.entry_imagen.delete(0, tk.END)
-        if texto:
-            self.entry_imagen.insert(0, texto)
-        self.entry_imagen.config(state="readonly")
-
-    def _mostrar_preview(self, ruta):
-        """Preview 190x140 con PNG nativo; fallback a texto si falla."""
-        try:
-            if ruta and os.path.exists(ruta):
-                img = tk.PhotoImage(file=ruta)
-                # Reescala por enteros para encajar aprox. en 190x140
-                fx = max(1, img.width() // 190 + (1 if img.width() % 190 else 0))
-                fy = max(1, img.height() // 140 + (1 if img.height() % 140 else 0))
-                f = max(fx, fy)
-                if f > 1:
-                    img = img.subsample(f, f)
-                self._preview_img = img
-                self.lbl_preview.config(image=img, text="", width=190, height=140)
-                return
-        except Exception:
-            pass
-        # Fallback compacto: restaurar width/height de texto (28x4).
-        # Sin esto el label vacío heredaba 190x140 px de la foto y
-        # quedaba un bloque gris gigante tras Limpiar/Guardar/Quitar.
-        self._preview_img = None
-        self.lbl_preview.config(image="", text="Sin imagen", width=28, height=4)
-
-    def _examinar_imagen(self):
-        origen = filedialog.askopenfilename(
-            title="Elegir imagen PNG del producto",
-            filetypes=[("PNG", "*.png"), ("Todos", "*.*")],
-        )
-        if not origen:
-            return
-        if not origen.lower().endswith(".png"):
-            return self._error("Solo se permiten imágenes PNG (nativo)")
-        # Validar que tkinter la pueda leer
-        try:
-            tk.PhotoImage(file=origen)
-        except Exception:
-            return self._error("Ese PNG no se pudo leer")
-        self._origen_imagen_tmp = origen
-        # Si ya hay ruta guardada (editando), se mantiene hasta guardar;
-        # si es nuevo, previsualizamos el origen y mostramos su nombre
-        # con marca de pendiente: la copia real ocurre en Guardar.
-        self._set_entry_imagen(os.path.basename(origen) + " (pendiente)")
-        self._mostrar_preview(origen)
-        self.label_error.config(text="")
-        _toast(self, "PNG listo: pulsa Guardar para copiarlo a data/imagenes/", tipo="exito")
-
-    def _quitar_imagen(self):
-        self._origen_imagen_tmp = None
-        self._ruta_imagen_tmp = None
-        self._set_entry_imagen("")
-        self._mostrar_preview(None)
-        self.label_error.config(text="")
-
-    def _copiar_imagen_al_guardar(self, id_producto):
-        """
-        Copia el PNG elegido a data/imagenes/id_<id>.png y VERIFICA
-        que quedó en disco. Retorna (ruta_rel_o_None, error_o_None).
-        Solo PNG nativo (sin Pillow).
-        """
-        # Sin origen nuevo: conservar la ruta que ya tenía (editar sin cambiar foto)
-        if not self._origen_imagen_tmp:
-            return self._ruta_imagen_tmp, None
-        if not os.path.exists(self._origen_imagen_tmp):
-            return self._ruta_imagen_tmp, f"Origen no existe: {self._origen_imagen_tmp}"
-        destino = os.path.join(self._dir_imagenes(), f"id_{id_producto}.png")
-        try:
-            shutil.copyfile(self._origen_imagen_tmp, destino)
-        except Exception as e:
-            return self._ruta_imagen_tmp, f"No se pudo copiar el PNG: {e}"
-        # Verificación real en disco (no solo "sin excepción")
-        try:
-            if not os.path.exists(destino) or os.path.getsize(destino) == 0:
-                return self._ruta_imagen_tmp, f"La copia quedó vacía o no existe: {destino}"
-            tk.PhotoImage(file=destino)  # verifica que la copia se puede leer
-        except Exception as e:
-            return self._ruta_imagen_tmp, f"La copia no se puede leer: {e}"
-        rel = os.path.join("data", "imagenes", f"id_{id_producto}.png").replace(os.sep, "/")
-        self._origen_imagen_tmp = None
-        return rel, None
-
-    # ------------------------------------------------------------------
-    # LÓGICA
-    # ------------------------------------------------------------------
-    def _refrescar_tabla(self):
-        """Vuelve a dibujar la tabla y el valor total con los datos actuales."""
-        for fila in self.tabla.get_children():
-            self.tabla.delete(fila)
-
-        for p in self.inventario.productos:
-            precio_fmt = f"${p.precio:,.0f}".replace(",", ".")
-            marca_foto = "✓" if getattr(p, "imagen", None) else "—"
-            self.tabla.insert("", "end", iid=str(p.id), values=(p.id, p.nombre, precio_fmt, p.stock, p.categoria, marca_foto))
-
-        valor_total = self.inventario.calcular_valor_inventario()
-        valor_fmt = f"${valor_total:,.0f}".replace(",", ".")
-        self.label_valor_total.config(text=f"Valor total del inventario: {valor_fmt}")
-
-        self.entry_categoria["values"] = self.inventario.obtener_categorias()
-        if hasattr(self, "combo_reporte"):
-            actual = self.combo_reporte.get()
-            self.combo_reporte["values"] = self.inventario.obtener_categorias()
-            if actual not in list(self.combo_reporte["values"]) + ["Elige categoría"]:
-                self.combo_reporte.set("Elige categoría")
-
-        if hasattr(self, "label_ventas"):
-            texto_venta, texto_carritos = self._resumen_ventas_carritos()
-            self.label_ventas.config(text=texto_venta)
-            self.label_carritos.config(text=texto_carritos)
-
-    def _al_seleccionar_fila(self, event):
-        seleccion = self.tabla.selection()
-        if not seleccion:
-            return
-
-        producto = self.inventario.buscar_por_id(int(seleccion[0]))
-        if producto is None:
-            return
-
-        self.id_seleccionado = producto.id
-        self.titulo_formulario.config(text=f"Editando #{producto.id}")
-        self.btn_guardar.config(text="Actualizar Producto")
-
-        # ID inmutable al editar: se muestra readonly, no se valida de nuevo
-        self.entry_id.config(state="normal")
-        self.entry_id.delete(0, tk.END)
-        self.entry_id.insert(0, str(producto.id))
-        self.entry_id.config(state="readonly")
-        self.entry_nombre.delete(0, tk.END)
-        self.entry_nombre.insert(0, producto.nombre)
-        self.entry_precio.delete(0, tk.END)
-        self.entry_precio.insert(0, str(producto.precio))
-        self.entry_stock.delete(0, tk.END)
-        self.entry_stock.insert(0, str(producto.stock))
-        self.entry_categoria.set(producto.categoria)
-        # Si había un PNG pendiente de guardar, se conserva (no se pierde
-        # en silencio al cambiar de fila): se aplicará al Guardar.
-        if self._origen_imagen_tmp:
-            _toast(self, "Foto pendiente conservada: pulsa Guardar para aplicarla", tipo="info")
-            return
-        self._ruta_imagen_tmp = producto.imagen
-        self._origen_imagen_tmp = None
-        self._set_entry_imagen(producto.imagen or "")
-        if producto.imagen:
-            base = self._raiz_proyecto()
-            ruta_abs = producto.imagen if os.path.isabs(producto.imagen) else os.path.join(base, producto.imagen)
-            self._mostrar_preview(ruta_abs)
+            filas = []
+        if filas:
+            for usuario, detalle in filas:
+                self.tabla.insert("", "end", iid=f"car-{usuario}", values=(usuario, detalle))
         else:
-            self._mostrar_preview(None)
-
-    def _limpiar_formulario(self):
-        self.id_seleccionado = None
-        self.titulo_formulario.config(text="Nuevo Producto")
-        self.btn_guardar.config(text="Agregar Producto")
-        self.label_error.config(text="")
-
-        self.entry_id.config(state="normal")
-        self.entry_id.delete(0, tk.END)
-        self.entry_nombre.delete(0, tk.END)
-        self.entry_precio.delete(0, tk.END)
-        self.entry_stock.delete(0, tk.END)
-        self.entry_categoria.set("")
-        self._ruta_imagen_tmp = None
-        self._origen_imagen_tmp = None
-        self._set_entry_imagen("")
-        self._mostrar_preview(None)
-
-        if self.tabla.selection():
-            self.tabla.selection_remove(self.tabla.selection())
-
-    def _error(self, msg):
-        """Error EN PANTALLA (label fijo + toast flotante 2s)."""
-        self.label_error.config(text=msg)
-        _toast(self, msg, tipo="error")
-        return None
-
-    def _leer_formulario(self):
-        """
-        Lee y valida el formulario. Retorna (id_or_None, nombre, precio,
-        stock, categoria, imagen) o None si hay un error (label+toast).
-        `id_or_None`: vacío → automático; con valor → entero >= 1 y único
-        (solo se valida duplicado en modo crear; en editar el ID es
-        inmutable y se ignora este campo).
-        `imagen` es la ruta relativa actual (puede ser None); si hay un
-        PNG nuevo por copiar, se resuelve en _guardar().
-        """
-        id_txt = self.entry_id.get().strip()
-        if id_txt == "":
-            id_manual = None
-        else:
-            # Acepta "7" (no "7.5" ni "1,000"): entero estricto
-            try:
-                if any(c in id_txt for c in ".,"):
-                    raise ValueError
-                id_manual = int(id_txt)
-            except ValueError:
-                return self._error("El ID debe ser un número entero")
-            if id_manual < 1:
-                return self._error("El ID debe ser mayor o igual a 1")
-            if self.id_seleccionado is None and self.inventario.buscar_por_id(id_manual) is not None:
-                return self._error(f"Ya existe un producto con ID {id_manual}")
-        nombre = self.entry_nombre.get().strip()
-        categoria = self.entry_categoria.get().strip()
-
-        if nombre == "":
-            return self._error("El nombre no puede estar vacío")
-        if categoria == "":
-            return self._error("La categoría no puede estar vacía")
-
-        # Se aceptan precios con o sin puntos de miles ("149990" o
-        # "149.990"), para que no choque con el formato en que se
-        # MUESTRA el precio en el resto de la tienda.
-        try:
-            precio = float(self.entry_precio.get().replace(".", "").replace(",", ""))
-        except ValueError:
-            return self._error("El precio debe ser un número")
-
-        try:
-            stock = int(self.entry_stock.get())
-        except ValueError:
-            return self._error("El stock debe ser un número entero")
-
-        if precio < 0:
-            return self._error("El precio no puede ser negativo")
-        if stock < 0:
-            return self._error("El stock no puede ser negativo")
-
-        self.label_error.config(text="")
-        return id_manual, nombre, precio, stock, categoria, self._ruta_imagen_tmp
-
-    def _guardar(self):
-        datos = self._leer_formulario()
-        if datos is None:
-            # Validación fallida: la foto pendiente se conserva para reintentar
-            if self._origen_imagen_tmp:
-                _toast(self, "Corrige el formulario (foto PNG conservada)", tipo="info")
-            return
-        id_manual, nombre, precio, stock, categoria, _ = datos
-
-        if self.id_seleccionado is None:
-            habia_foto_nueva = bool(self._origen_imagen_tmp)
-            try:
-                nuevo = self.inventario.agregar_producto(nombre, precio, stock, categoria, imagen=None, id=id_manual)
-            except ValueError as e:
-                self._error(str(e))
-                return
-            # Copiar el PNG ahora que ya existe el ID real
-            ruta_rel, err = self._copiar_imagen_al_guardar(nuevo.id)
-            if err:
-                # Producto guardado pero foto NO: quedar en modo edición
-                # del nuevo producto para reintentar sin perder nada.
-                self.id_seleccionado = nuevo.id
-                self.titulo_formulario.config(text=f"Editando #{nuevo.id}")
-                self.btn_guardar.config(text="Actualizar Producto")
-                self.entry_id.config(state="normal")
-                self.entry_id.delete(0, tk.END)
-                self.entry_id.insert(0, str(nuevo.id))
-                self.entry_id.config(state="readonly")
-                self._ruta_imagen_tmp = ruta_rel
-                self._error(err + " (producto guardado sin foto, reintenta)")
-                self._refrescar_tabla()
-                return
-            if ruta_rel != nuevo.imagen:
-                try:
-                    self.inventario.actualizar_producto(nuevo.id, nombre, precio, stock, categoria, imagen=ruta_rel)
-                except ValueError as e:
-                    self._error(str(e))
-                    return
-            self._ruta_imagen_tmp = ruta_rel
-            if habia_foto_nueva:
-                _toast(self, f"Foto guardada: {ruta_rel}", tipo="exito")
-            else:
-                _toast(self, f"Producto '{nombre}' agregado", tipo="exito")
-        else:
-            habia_foto_nueva = bool(self._origen_imagen_tmp)
-            ruta_rel, err = self._copiar_imagen_al_guardar(self.id_seleccionado)
-            if err:
-                self._error(err + " (no se guardó la foto, reintenta)")
-                self._refrescar_tabla()
-                return
-            try:
-                self.inventario.actualizar_producto(self.id_seleccionado, nombre, precio, stock, categoria, imagen=ruta_rel)
-            except ValueError as e:
-                self._error(str(e))
-                return
-            self._ruta_imagen_tmp = ruta_rel
-            if habia_foto_nueva:
-                _toast(self, f"Foto guardada: {ruta_rel}", tipo="exito")
-            else:
-                _toast(self, f"Producto '{nombre}' actualizado", tipo="exito")
-
-        self._refrescar_tabla()
-        self._limpiar_formulario()
-
-    def _eliminar(self):
-        if self.id_seleccionado is None:
-            self._error("Selecciona un producto de la tabla primero")
-            return
-        producto = self.inventario.buscar_por_id(self.id_seleccionado)
-        if producto is None:
-            self._error("El producto seleccionado ya no existe")
-            return
-        if not messagebox.askyesno("Confirmar eliminación", f"¿Seguro que quieres eliminar '{producto.nombre}'?"):
-            return
-
-        self.inventario.eliminar_producto(self.id_seleccionado)
-        # Borrar su PNG (solo si vive en data/imagenes/) para no dejar huérfanos
-        try:
-            img = (producto.imagen or "").replace("\\", "/")
-            if img.startswith("data/imagenes/"):
-                abs_img = os.path.join(self._raiz_proyecto(), img)
-                if os.path.exists(abs_img):
-                    os.remove(abs_img)
-        except Exception:
-            pass
-        _toast(self, f"Producto '{producto.nombre}' eliminado", tipo="exito")
-        self._refrescar_tabla()
-        self._limpiar_formulario()
-
-    def _actualizar_solo_stock(self):
-        """Actualiza solo el stock del producto seleccionado (sin tocar
-        nombre/precio/categoría/imagen). Usa actualizar_producto del modelo."""
-        if self.id_seleccionado is None:
-            self._error("Selecciona un producto de la tabla primero")
-            return
-        try:
-            nuevo_stock = int(self.entry_stock.get())
-        except ValueError:
-            self._error("El stock debe ser un numero entero valido")
-            return
-        if nuevo_stock < 0:
-            self._error("El stock no puede ser negativo")
-            return
-        producto = self.inventario.buscar_por_id(self.id_seleccionado)
-        if producto is None:
-            self._error("El producto seleccionado ya no existe")
-            return
-        try:
-            self.inventario.actualizar_producto(
-                self.id_seleccionado,
-                producto.nombre,
-                producto.precio,
-                nuevo_stock,
-                producto.categoria,
-                imagen=producto.imagen,
-            )
-        except ValueError as e:
-            self._error(str(e))
-            return
-        _toast(self, f"Stock de '{producto.nombre}' actualizado a {nuevo_stock}", tipo="exito")
-        self._refrescar_tabla()
-        self._limpiar_formulario()
-
-    def _vaciar_inventario(self):
-        if not self.inventario.productos:
-            self._error("El inventario ya esta vacio")
-            return 
-        n=len(self.inventario.productos)
-        if not messagebox.askyesno(
-            "Vaciar inventario",
-            f"¿Eliminar los {n} productos del inventario?",
-        ):
-            return
-        imagenes= [(p.imagen or "").replace("\\","/") for p in self.inventario.productos]
-        self.inventario.vaciar_inventario()
-        for img in imagenes:
-            try:
-                if img.startswith("data/imagenes/"):
-                    abs_img=os.path.join(self._raiz_proyecto(),img)
-                    if os.path.exists(abs_img):
-                        os.remove(abs_img)
-            except Exception:
-                pass
-        _toast(self,f"Inventario vaciado ({n} productos)", tipo = "Exito")
-        self._refrescar_tabla()
-        self._limpiar_formulario
-
-# ==============================================================================
-# PRUEBA INDEPENDIENTE
-# ==============================================================================
-if __name__ == "__main__":
-    root = tk.Tk()
-    root.title("RetroVault - Administración")
-    root.geometry("950x600")
-    root.configure(bg=BG_DARK)
-
-    pantalla = PantallaAdmin(root)
-    pantalla.pack(fill="both", expand=True)
-
-    root.mainloop()
+            self.tabla.insert("", "end", iid="sin-carritos", values=("?", "Sin carritos activos"))

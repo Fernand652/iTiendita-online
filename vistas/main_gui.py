@@ -222,7 +222,9 @@ class RetroVaultApp:
         tipo = mensaje.get("type")
         if tipo == T_CARRITOS:
             # Somos el ADMIN: así están los carritos de todos.
-            # Al panel solo le alcanza con la cantidad de cada item.
+            # Reemplazamos la foto anterior completa: update() dejaría en
+            # pantalla un carrito que el cliente ya vació o pagó.
+            self.carritos.clear()
             self.carritos.update(mensaje.get("carritos") or {})
             self._refrescar_admin()
         elif tipo == T_INVENTARIO and self.conexion is not None:
