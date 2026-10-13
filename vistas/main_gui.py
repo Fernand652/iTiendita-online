@@ -393,7 +393,7 @@ class RetroVaultApp:
         self._notificar_carrito()
         return self.carrito
 
-    def _registrar_venta(self):
+    def _registrar_venta(self, run=None):
         """Guarda la venta en data/ventas.json para que el ADMIN la consuma."""
         if RUTA_VENTAS_JSON is None or cargar_json is None:
             return None
@@ -420,6 +420,7 @@ class RetroVaultApp:
             {
                 "id_venta": id_venta,
                 "cliente": self.usuario_actual,
+                "run": (run or "").strip(),
                 "fecha": fecha,
                 "items": items,
                 "subtotal": subtotal,
@@ -430,7 +431,7 @@ class RetroVaultApp:
         guardar_json(str(RUTA_VENTAS_JSON), ventas)
         return id_venta
 
-    def _confirmar_pago(self):
+    def _confirmar_pago(self, run=None):
         """Confirma la venta: la registra y vacía SIN devolver stock."""
         if not self.carrito:
             return False
@@ -438,9 +439,12 @@ class RetroVaultApp:
             # Con sockets el SERVER es quien cobra y descuenta. Le pedimos
             # confirmar y esperamos su respuesta; si el stock no alcanzan nos
             # va a corregir el carrito con T_CARRITO_ESTADO.
-            self.conexion.pagar()
+            try:
+                self.conexion.pagar(run)
+            except TypeError:
+                self.conexion.pagar()
             return True
-        id_venta = self._registrar_venta()
+        id_venta = self._registrar_venta(run)
         self.carrito.clear()
         return True
     # navegacion entre las 6 pantallas

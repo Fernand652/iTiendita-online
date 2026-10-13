@@ -278,7 +278,7 @@ class ServidorCarritos(threading.Thread):
                     elif tipo == T_VACIAR:
                         self._procesar_vaciar(conexion, usuario)
                     elif tipo == T_PAGO:
-                        self._procesar_pago(conexion, usuario)
+                        self._procesar_pago(conexion, usuario, mensaje)
         except (OSError, ValueError):
             # Cliente cerró la ventana o se cortó el cable. No es un error de
             # verdad, es la forma normal de terminar una conexión.
@@ -423,7 +423,7 @@ class ServidorCarritos(threading.Thread):
         self._enviar(conexion, {"type": T_CARRITO_ESTADO, "items": items_a_lista(vacio)})
         self._difundir_carritos()
 
-    def _procesar_pago(self, conexion, usuario):
+    def _procesar_pago(self, conexion, usuario, mensaje=None):
         """
         Confirma la compra: se registra la venta en data/ventas.json y el
         carrito se limpia SIN devolver el stock (ya se cobró).
@@ -446,7 +446,7 @@ class ServidorCarritos(threading.Thread):
                                 "precio": producto.precio, "cantidad": cantidad,
                                 "subtotal": subtotal})
 
-            self._guardar_venta(usuario, detalle, total)
+            self._guardar_venta(usuario, detalle, total, run=(mensaje or {}).get("run", ""))
             self.carritos.pop(usuario, None)
 
         self._enviar(conexion, {"type": T_PAGO_OK, "total": total})
@@ -465,7 +465,7 @@ class ServidorCarritos(threading.Thread):
                 max_id = vid
         return max_id + 1
 
-    def _guardar_venta(self, usuario, detalle, total):
+    def _guardar_venta(self, usuario, detalle, total, run=None):
         """Escribe la venta en data/ventas.json (la usa el panel del ADMIN)."""
         try:
             from datetime import datetime
@@ -478,7 +478,7 @@ class ServidorCarritos(threading.Thread):
             total_final = subtotal + iva
             ventas = cargar_json(str(RUTA_VENTAS_JSON), default=[]) or []
             id_venta = self._siguiente_id_venta(ventas)
-            ventas.append({"id_venta": id_venta, "cliente": usuario, "fecha": fecha,
+            ventas.append({"id_venta": id_venta, "cliente": usuario, "run": (run or "").strip(), "fecha": fecha,
                            "items": detalle, "subtotal": subtotal, "iva": iva, "total": total_final})
             guardar_json(str(RUTA_VENTAS_JSON), ventas)
             return id_venta

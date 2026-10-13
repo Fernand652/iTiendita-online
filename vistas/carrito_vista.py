@@ -364,6 +364,13 @@ class carrito(tk.Frame):
             self._mostrar_mensaje("Inicia sesión para comprar", tipo="info")
 
     # SUBFUNCIONALIDAD ITEM 4: COMPROBANTE DE COMPRA
+    def _run_ingresado(self):
+        """RUN opcional del resumen (sirve para el historial, no bloquea)."""
+        try:
+            return (self.entry_run.get() or "").strip()
+        except Exception:
+            return ""
+
     def _generar_comprobante(self):
         modal = tk.Toplevel(self)
         modal.title("Comprobante de Venta")
@@ -375,7 +382,11 @@ class carrito(tk.Frame):
 
         tk.Label(modal, text="COMPROBANTE DE COMPRA", font=FUENTE_TITULO, bg=DARK_CARD, fg=GREEN).pack(pady=(20, 5))
         cliente = self.usuario_actual or "Cliente General"
-        tk.Label(modal, text=f"Cliente: {cliente}", font=FUENTE_BODY, bg=DARK_CARD, fg=WHITE).pack(pady=(0, 10))
+        tk.Label(modal, text=f"Cliente: {cliente}", font=FUENTE_BODY, bg=DARK_CARD, fg=WHITE).pack(pady=(0, 2))
+        if self._run_ingresado():
+            tk.Label(modal, text=f"RUN: {self._run_ingresado()}", font=FUENTE_BODY, bg=DARK_CARD, fg=GRAY_TEXT).pack(pady=(0, 10))
+        else:
+            tk.Label(modal, text="RUN: —", font=FUENTE_BODY, bg=DARK_CARD, fg=GRAY_TEXT).pack(pady=(0, 10))
 
         tk.Frame(modal, bg=GRAY_BTN, height=1).pack(fill="x", padx=20, pady=5)
 
@@ -416,7 +427,7 @@ class carrito(tk.Frame):
         def confirmar():
             modal.destroy()
 
-            run_cliente = self.entry_run.get().strip() if hasattr(self, 'entry_run') else ""
+            run_cliente = self._run_ingresado()
             if not run_cliente:
                 run_cliente = self.usuario_actual or "Anonimo"
 
@@ -442,7 +453,10 @@ class carrito(tk.Frame):
                 registrar_venta(nueva_venta.to_dict())
 
             if self.on_pagar_confirmado is not None:
-                ok = self.on_pagar_confirmado()
+                try:
+                    ok = self.on_pagar_confirmado(run_cliente)
+                except TypeError:
+                    ok = self.on_pagar_confirmado()
                 if ok:
                     self.lista_actual = []
                     self.actualizar_carrito([])

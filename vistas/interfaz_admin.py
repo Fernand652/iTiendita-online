@@ -226,6 +226,25 @@ class PantallaAdmin(tk.Frame):
         )
         self.label_carritos.pack(anchor="w")
 
+        fila_hist = tk.Frame(marco, bg=DARK_CARD)
+        fila_hist.pack(fill="x", pady=(8, 0))
+        tk.Label(
+            fila_hist, text="Historial cliente (RUN/email):", font=FUENTE_NAV,
+            bg=DARK_CARD, fg=GRAY_TEXT,
+        ).pack(side="left")
+        self.entry_historial = tk.Entry(fila_hist, font=FUENTE_BODY, width=22, relief="flat", bd=4)
+        self.entry_historial.pack(side="left", padx=(8, 8), ipady=2)
+        tk.Button(
+            fila_hist, text="Buscar", font=FUENTE_NAV,
+            bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
+            command=self._buscar_historial
+        ).pack(side="left", ipadx=8, ipady=4)
+        self.label_historial = tk.Label(
+            marco, text="", font=FUENTE_BODY,
+            bg=DARK_CARD, fg=WHITE, wraplength=480, justify="left",
+        )
+        self.label_historial.pack(anchor="w", pady=(4, 0))
+
         tk.Button(
             marco, text="Actualizar", font=FUENTE_NAV,
             bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
@@ -294,6 +313,38 @@ class PantallaAdmin(tk.Frame):
             "Carritos: " + (" | ".join(partes) if partes else "vacíos")
         )
         return texto_venta, texto_carritos
+
+    def _buscar_historial(self):
+        """Hito 2.6 CLIENTE: filtra ventas por RUN/email y ordena por fecha."""
+        texto = (self.entry_historial.get() or "").strip().lower()
+        if not texto:
+            self.label_historial.config(text="Ingresa un RUN o email para buscar")
+            return
+        try:
+            from persistencia.gestor_persistencia import RUTA_VENTAS_JSON, cargar_json
+        except ImportError:
+            try:
+                from gestor_persistencia import RUTA_VENTAS_JSON, cargar_json
+            except ImportError:
+                RUTA_VENTAS_JSON, cargar_json = None, None
+        ventas = []
+        try:
+            if RUTA_VENTAS_JSON is not None and cargar_json is not None:
+                ventas = cargar_json(str(RUTA_VENTAS_JSON), default=[]) or []
+        except Exception:
+            ventas = []
+        mias = [v for v in ventas if str(v.get("cliente", "")).strip().lower() == texto or str(v.get("run", "")).strip().lower() == texto]
+        mias.sort(key=lambda v: str(v.get("fecha", "")))
+        if not mias:
+            msg = f"Sin compras para '{texto}' (busca por email o RUN)"
+            self.label_historial.config(text=msg)
+            _toast(self, msg, tipo="info")
+            return
+        total = sum(float(v.get("total", 0)) for v in mias)
+        lineas = [f"{v.get('fecha','?')} [{v.get('cliente','?')}" + (f" RUN:{v.get('run')}" if str(v.get('run','')).strip() else "") + f"]: {sum(i.get('cantidad',0) for i in v.get('items',[]))} uds. ${float(v.get('total',0)):,.0f}".replace(",", ".") for v in mias[-5:]]
+        msg = f"{len(mias)} compras | Total: ${total:,.0f}".replace(",", ".") + "\n" + "\n".join(lineas)
+        self.label_historial.config(text=msg)
+        _toast(self, f"Historial '{texto}': {len(mias)} compras", tipo="exito")
 
     def _crear_reportes(self, parent):
         """Sección Reportes por categoría: promedio y menor stock (Item 3)."""
