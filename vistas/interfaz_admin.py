@@ -263,9 +263,31 @@ class PantallaAdmin(tk.Frame):
         partes = []
         try:
             for usuario, items in (self.carritos or {}).items():
-                n = sum(e.get("cantidad", 0) for e in items)
-                if n > 0:
-                    partes.append(f"{usuario}: {n} uds.")
+                if not items:
+                    continue
+                detalle = []
+                for e in items:
+                    if isinstance(e, dict):
+                        if "producto" in e:
+                            p = e["producto"]
+                            nom = getattr(p, "nombre", "Producto")
+                        else:
+                            pid = e.get("id")
+                            nom = str(pid) if pid is not None else "Producto"
+                            try:
+                                prod = self.inventario.buscar_por_id(pid)
+                                if prod and getattr(prod, "nombre", None):
+                                    nom = prod.nombre
+                            except Exception:
+                                pass
+                        c = int(e.get("cantidad", 0))
+                    else:
+                        c = 0
+                        nom = "Producto"
+                    if c:
+                        detalle.append(f"{c} {nom}")
+                if detalle:
+                    partes.append(f"{usuario}: " + " | ".join(detalle))
         except Exception:
             pass
         texto_carritos = (
