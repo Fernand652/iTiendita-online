@@ -215,6 +215,12 @@ class PantallaAdmin(tk.Frame):
         )
         self.btn_carritos.pack(side="right", ipadx=8, ipady=4)
 
+        tk.Button(
+            fila_vista, text="VER VENTAS", font=FUENTE_NAV,
+            bg=GREEN, fg=BLACK, relief="flat", bd=0, cursor="hand2",
+            command=self._abrir_todas_las_ventas,
+        ).pack(side="right", padx=(0, 8), ipadx=8, ipady=4)
+
         self._crear_reportes(panel)
 
     def _alternar_vista_carritos(self):
@@ -222,6 +228,20 @@ class PantallaAdmin(tk.Frame):
         self._vista_carritos = not self._vista_carritos
         self.id_seleccionado = None
         self._refrescar_tabla()
+
+    def _abrir_todas_las_ventas(self):
+        """Abre la pestaña de detalle conectada a data/ventas.json."""
+        try:
+            from vistas.pestaña_ventas import abrir_ventana_ventas
+        except ImportError:
+            try:
+                from pestaña_ventas import abrir_ventana_ventas
+            except ImportError:
+                return
+        try:
+            abrir_ventana_ventas(self)
+        except Exception:
+            return
 
     def _configurar_columnas_inventario(self):
         encabezados = {
@@ -256,27 +276,235 @@ class PantallaAdmin(tk.Frame):
             producto = self.inventario.buscar_por_id(item.get("id"))
             yield (producto.nombre if producto is not None else f"Producto #{item.get('id', '?')}"), cantidad
 
-        filas = []
+    # -- Métodos que el archivo usaba pero no definía (crash al abrir) --
+    def _error(self, msg):
         try:
-            for usuario, items in (self.carritos or {}).items():
-                if not items: continue
-                detalle = []
-                for e in items:
-                    if isinstance(e, dict):
-                        if "producto" in e:
-                            p = e["producto"]; nom = getattr(p, "nombre", "Prod")
-                        else:
-                            pid = e.get("id"); nom = str(pid) if pid is not None else "Prod"
-                        c = int(e.get("cantidad", 0))
-                    else:
-                        c = 0; nom = "Prod"
-                    if c: detalle.append(f"{c} {nom}")
-                if detalle:
-                    filas.append((usuario, " | ".join(detalle)))
+            self.label_error.config(text=msg)
         except Exception:
-            filas = []
-        if filas:
-            for usuario, detalle in filas:
-                self.tabla.insert("", "end", iid=f"car-{usuario}", values=(usuario, detalle))
+            pass
+        try:
+            from vistas.toast import mostrar_toast as _toast_fn
+        except ImportError:
+            try:
+                from toast import mostrar_toast as _toast_fn
+            except ImportError:
+                _toast_fn = None
+        if _toast_fn is not None:
+            try:
+                _toast_fn(self, msg, tipo="error")
+            except Exception:
+                pass
+        return None
+
+    def _al_seleccionar_fila(self, _event=None):
+        if getattr(self, "_vista_carritos", False):
+            return None
+        try:
+            sel = self.tabla.selection()
+        except Exception:
+            return None
+        if not sel:
+            return None
+        try:
+            pid = int(sel[0])
+        except (TypeError, ValueError):
+            return None
+        producto = self.inventario.buscar_por_id(pid)
+        if producto is None:
+            return None
+        self.id_seleccionado = producto.id
+        try:
+            self.titulo_formulario.config(text=f"Editando #{producto.id}")
+            self.btn_guardar.config(text="Actualizar Producto")
+            for e, v in ((self.entry_id, str(producto.id)), (self.entry_nombre, producto.nombre),
+                         (self.entry_precio, str(producto.precio)), (self.entry_stock, str(producto.stock))):
+                e.config(state="normal")
+                e.delete(0, tk.END)
+                e.insert(0, v)
+            self.entry_id.config(state="readonly")
+            self.entry_categoria.set(producto.categoria)
+            self.label_error.config(text="")
+        except Exception:
+            pass
+        return None
+
+    def _crear_reportes(self, panel):
+        """Mínimo: acceso a la pestaña de ventas conectada a ventas.json."""
+        marco = tk.Frame(panel, bg=DARK_CARD, padx=12, pady=12)
+        marco.pack(fill="x", pady=(12, 0))
+        tk.Label(marco, text="Ventas", font=FUENTE_NAV, bg=DARK_CARD, fg=GREEN).pack(anchor="w")
+        tk.Button(
+            marco, text="Ver todas las ventas", font=FUENTE_NAV,
+            bg=GREEN, fg=BLACK, relief="flat", bd=0, cursor="hand2",
+            command=self._abrir_todas_las_ventas,
+        ).pack(anchor="w", pady=(8, 0), ipadx=8, ipady=4)
+
+    def _crear_formulario(self, parent):
+        """Formulario mínimo de productos: agregar / editar / eliminar."""
+        panel = tk.Frame(parent, bg=DARK_CARD, padx=25, pady=25)
+        panel.pack(fill="both", expand=True)
+        self.titulo_formulario = tk.Label(panel, text="Nuevo Producto", font=FUENTE_TITULO, bg=DARK_CARD, fg=WHITE)
+        self.titulo_formulario.pack(pady=(0, 20), anchor="w")
+        self.entry_id = self._campo_texto(panel, "ID (vacío = automático)")
+        self.entry_nombre = self._campo_texto(panel, "Nombre")
+        self.entry_precio = self._campo_texto(panel, "Precio (CLP)")
+        self.entry_stock = self._campo_texto(panel, "Stock")
+        tk.Label(panel, text="Categoría", font=FUENTE_NAV, bg=DARK_CARD, fg=GRAY_TEXT).pack(anchor="w", pady=(8, 2))
+        try:
+            cats = self.inventario.obtener_categorias()
+        except Exception:
+            cats = []
+        self.entry_categoria = ttk.Combobox(panel, font=FUENTE_BODY, values=cats)
+        self.entry_categoria.pack(fill="x", ipady=2)
+        self.label_error = tk.Label(panel, text="", font=(FUENTE_BODY[0], 9),
+                                    bg=DARK_CARD, fg="#ff6b6b", wraplength=220, justify="left")
+        self.label_error.pack(anchor="w", pady=(8, 8))
+        self.btn_guardar = tk.Button(panel, text="Agregar Producto", font=FUENTE_BOTON,
+                                     bg=GREEN, fg=BLACK, relief="flat", bd=0, cursor="hand2",
+                                     command=self._guardar)
+        self.btn_guardar.pack(fill="x", ipady=8, pady=4)
+        tk.Button(panel, text="Eliminar seleccionado", font=FUENTE_BOTON,
+                  bg="#c0392b", fg=WHITE, relief="flat", bd=0, cursor="hand2",
+                  command=self._eliminar).pack(fill="x", ipady=8, pady=4)
+        tk.Button(panel, text="Limpiar formulario", font=FUENTE_NAV,
+                  bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
+                  command=self._limpiar_formulario).pack(fill="x", ipady=6, pady=(15, 0))
+
+    def _campo_texto(self, parent, etiqueta):
+        tk.Label(parent, text=etiqueta, font=FUENTE_NAV, bg=DARK_CARD, fg=GRAY_TEXT).pack(anchor="w", pady=(8, 2))
+        entry = tk.Entry(parent, font=FUENTE_BODY, relief="flat", bd=4)
+        entry.pack(fill="x", ipady=4)
+        return entry
+
+    def _leer_formulario(self):
+        id_txt = self.entry_id.get().strip()
+        if id_txt == "":
+            id_manual = None
         else:
-            self.tabla.insert("", "end", iid="sin-carritos", values=("?", "Sin carritos activos"))
+            try:
+                if any(c in id_txt for c in ".,"):
+                    raise ValueError
+                id_manual = int(id_txt)
+            except ValueError:
+                self.label_error.config(text="El ID debe ser un número entero")
+                return None
+            if id_manual < 1:
+                self.label_error.config(text="El ID debe ser mayor o igual a 1")
+                return None
+            if self.id_seleccionado is None and self.inventario.buscar_por_id(id_manual) is not None:
+                self.label_error.config(text=f"Ya existe un producto con ID {id_manual}")
+                return None
+        nombre = self.entry_nombre.get().strip()
+        categoria = self.entry_categoria.get().strip()
+        if not nombre:
+            self.label_error.config(text="El nombre no puede estar vacío")
+            return None
+        if not categoria:
+            self.label_error.config(text="La categoría no puede estar vacía")
+            return None
+        try:
+            precio = float(self.entry_precio.get().replace(".", "").replace(",", ""))
+        except ValueError:
+            self.label_error.config(text="El precio debe ser un número")
+            return None
+        try:
+            stock = int(self.entry_stock.get())
+        except ValueError:
+            self.label_error.config(text="El stock debe ser un número entero")
+            return None
+        if precio < 0:
+            self.label_error.config(text="El precio no puede ser negativo")
+            return None
+        if stock < 0:
+            self.label_error.config(text="El stock no puede ser negativo")
+            return None
+        self.label_error.config(text="")
+        return id_manual, nombre, precio, stock, categoria
+
+    def _guardar(self):
+        datos = self._leer_formulario()
+        if datos is None:
+            return
+        id_manual, nombre, precio, stock, categoria = datos
+        try:
+            if self.id_seleccionado is None:
+                self.inventario.agregar_producto(nombre, precio, stock, categoria, id=id_manual)
+            else:
+                anterior = self.inventario.buscar_por_id(self.id_seleccionado)
+                img = getattr(anterior, "imagen", None) if anterior else None
+                self.inventario.actualizar_producto(self.id_seleccionado, nombre, precio, stock, categoria, imagen=img)
+        except ValueError as e:
+            self.label_error.config(text=str(e))
+            return
+        self._refrescar_tabla()
+        self._limpiar_formulario()
+
+    def _eliminar(self):
+        if self.id_seleccionado is None:
+            self.label_error.config(text="Selecciona un producto de la tabla primero")
+            return
+        producto = self.inventario.buscar_por_id(self.id_seleccionado)
+        if producto is None:
+            self.label_error.config(text="El producto seleccionado ya no existe")
+            return
+        if not messagebox.askyesno("Confirmar eliminación", f"¿Eliminar '{producto.nombre}'?"):
+            return
+        self.inventario.eliminar_producto(self.id_seleccionado)
+        self._refrescar_tabla()
+        self._limpiar_formulario()
+
+    def _limpiar_formulario(self):
+        self.id_seleccionado = None
+        try:
+            self.titulo_formulario.config(text="Nuevo Producto")
+            self.btn_guardar.config(text="Agregar Producto")
+            self.label_error.config(text="")
+            self.entry_id.config(state="normal")
+            self.entry_id.delete(0, tk.END)
+            self.entry_nombre.delete(0, tk.END)
+            self.entry_precio.delete(0, tk.END)
+            self.entry_stock.delete(0, tk.END)
+            self.entry_categoria.set("")
+            if self.tabla.selection():
+                self.tabla.selection_remove(self.tabla.selection())
+        except Exception:
+            pass
+
+    def _refrescar_tabla(self):
+        """Rellena la tabla según _vista_carritos (inventario o carritos)."""
+        try:
+            for fila in self.tabla.get_children():
+                self.tabla.delete(fila)
+        except Exception:
+            return
+        try:
+            if self._vista_carritos:
+                self._configurar_columnas_carritos()
+                hay = False
+                for usuario, items in (self.carritos or {}).items():
+                    nombres = [f"{c} {n}" for n, c in self._items_carrito(items) if c]
+                    if nombres:
+                        hay = True
+                        self.tabla.insert("", "end", iid=f"car-{usuario}",
+                                          values=(usuario, " | ".join(nombres), "", "", "", ""))
+                if not hay:
+                    self.tabla.insert("", "end", iid="sin-carritos",
+                                      values=("?", "Sin carritos activos", "", "", "", ""))
+                self.label_valor_total.config(text="")
+                self.btn_carritos.config(text="VER INVENTARIO")
+            else:
+                self._configurar_columnas_inventario()
+                for p in self.inventario.productos:
+                    precio_fmt = f"${p.precio:,.0f}".replace(",", ".")
+                    marca = "✓" if getattr(p, "imagen", None) else "—"
+                    self.tabla.insert("", "end", iid=str(p.id),
+                                      values=(p.id, p.nombre, precio_fmt, p.stock, p.categoria, marca))
+                try:
+                    total = self.inventario.calcular_valor_inventario()
+                    self.label_valor_total.config(
+                        text=f"Valor total del inventario: ${total:,.0f}".replace(",", "."))
+                except Exception:
+                    pass
+                self.btn_carritos.config(text="VER CARRITOS ACTIVOS")
+        except Exception:
+            pass
