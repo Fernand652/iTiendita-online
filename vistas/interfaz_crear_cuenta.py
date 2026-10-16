@@ -282,7 +282,11 @@ class PantallaCrearCuenta(tk.Frame):
         }
 
         if self.gestor_usuarios is not None:
-            nuevo = self.gestor_usuarios.registrar_usuario(correo, password)
+            try:
+                nuevo = self.gestor_usuarios.registrar_usuario(
+                    correo, password, nombres=nombres, apellidos=apellidos, pais=pais)
+            except TypeError:
+                nuevo = self.gestor_usuarios.registrar_usuario(correo, password)
             if nuevo is None:
                 self._mostrar_error("Ese correo ya está registrado")
                 return

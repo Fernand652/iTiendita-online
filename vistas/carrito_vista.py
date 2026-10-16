@@ -371,6 +371,44 @@ class carrito(tk.Frame):
         except Exception:
             return ""
 
+    @staticmethod
+    def _normalizar_run(run):
+        """12.345.678-9 -> 12345678-9 (mayúscula, sin puntos). Vacío -> ''."""
+        if not run:
+            return ""
+        t = str(run).strip().upper().replace(".", "").replace(" ", "")
+        if "-" in t:
+            cuerpo, dv = t.rsplit("-", 1)
+            cuerpo = "".join(c for c in cuerpo if c.isdigit())
+            dv = dv.strip()
+            return f"{cuerpo}-{dv}" if cuerpo and dv else ""
+        solo = "".join(c for c in t if c.isalnum())
+        if len(solo) < 2:
+            return ""
+        return f"{solo[:-1]}-{solo[-1]}"
+
+    @staticmethod
+    def _validar_run(run):
+        """Valida RUT chileno por módulo 11. Vacío = válido (es opcional)."""
+        norm = carrito._normalizar_run(run)
+        if not norm:
+            return True
+        try:
+            cuerpo, dv = norm.split("-")
+        except ValueError:
+            return False
+        if not cuerpo.isdigit() or len(cuerpo) < 7 or len(cuerpo) > 8:
+            return False
+        if dv not in "0123456789K":
+            return False
+        s, m = 0, 2
+        for d in reversed(cuerpo):
+            s += int(d) * m
+            m = 2 if m == 7 else m + 1
+        calc = 11 - (s % 11)
+        esperado = "0" if calc == 11 else "K" if calc == 10 else str(calc)
+        return dv == esperado
+
     def _generar_comprobante(self):
         modal = tk.Toplevel(self)
         modal.title("Comprobante de Venta")
@@ -427,30 +465,17 @@ class carrito(tk.Frame):
         def confirmar():
             modal.destroy()
 
-            run_cliente = self._run_ingresado()
-            if not run_cliente:
-                run_cliente = self.usuario_actual or "Anonimo"
+            # Distinción con/sin RUT: vacío = boleta sin RUT (se guarda ""),
+            # válido = venta con RUT normalizado. No se reemplaza por el usuario.
+            run_raw = self._run_ingresado()
+            if run_raw and not self._validar_run(run_raw):
+                self._mostrar_mensaje("RUT inválido (ej: 12.345.678-5). Déjalo vacío si no tienes.", tipo="error")
+                return
+            run_cliente = self._normalizar_run(run_raw)
 
-            prods_venta = []
-            for el in self.lista_actual:
-                p = el["producto"]
-                prods_venta.append({
-                    "id": getattr(p, "id", 0),
-                    "nombre": getattr(p, "nombre", "Producto"),
-                    "precio": float(getattr(p, "precio", 0.0)),
-                    "cantidad": int(el["cantidad"])
-                })
-
-           
-            if Venta is not None and registrar_venta is not None:
-                id_nueva = len(cargar_ventas()) + 1 if cargar_ventas else 1
-                nueva_venta = Venta(
-                    id_venta=id_nueva,
-                    run_cliente=run_cliente,
-                    productos=prods_venta,
-                    total=self.total_actual
-                )
-                registrar_venta(nueva_venta.to_dict())
+            # El dueño de ventas.json es main_gui/_registrar_venta (local)
+            # o el servidor/_guardar_venta (red). No se escribe aquí para
+            # no duplicar la venta con otro formato.
 
             if self.on_pagar_confirmado is not None:
                 try:
