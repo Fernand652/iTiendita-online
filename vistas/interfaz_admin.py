@@ -328,16 +328,84 @@ class PantallaAdmin(tk.Frame):
             pass
         return None
 
-    def _crear_reportes(self, panel):
-        """Mínimo: acceso a la pestaña de ventas conectada a ventas.json."""
-        marco = tk.Frame(panel, bg=DARK_CARD, padx=12, pady=12)
+    def _crear_reportes(self, parent):
+        """Reportes por categoría: filtra el inventario y calcula promedio / menor stock."""
+        marco = tk.Frame(parent, bg=DARK_CARD, padx=12, pady=12)
         marco.pack(fill="x", pady=(12, 0))
-        tk.Label(marco, text="Ventas", font=FUENTE_NAV, bg=DARK_CARD, fg=GREEN).pack(anchor="w")
+
+        tk.Label(
+            marco, text="Reportes por categoría", font=FUENTE_NAV,
+            bg=DARK_CARD, fg=GREEN,
+        ).pack(anchor="w", pady=(0, 8))
+
+        fila = tk.Frame(marco, bg=DARK_CARD)
+        fila.pack(fill="x")
+
+        self.combo_reporte = ttk.Combobox(
+            fila, font=FUENTE_BODY, width=22, state="readonly",
+            values=self.inventario.obtener_categorias(),
+        )
+        self.combo_reporte.pack(side="left", padx=(0, 8))
+        self.combo_reporte.set("Elige categoría")
+
         tk.Button(
-            marco, text="Ver todas las ventas", font=FUENTE_NAV,
-            bg=GREEN, fg=BLACK, relief="flat", bd=0, cursor="hand2",
-            command=self._abrir_todas_las_ventas,
-        ).pack(anchor="w", pady=(8, 0), ipadx=8, ipady=4)
+            fila, text="Promedio", font=FUENTE_NAV,
+            bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
+            command=self._reporte_promedio
+        ).pack(side="left", padx=4, ipadx=8, ipady=4)
+
+        tk.Button(
+            fila, text="Menor stock", font=FUENTE_NAV,
+            bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
+            command=self._reporte_menor_stock
+        ).pack(side="left", padx=4, ipadx=8, ipady=4)
+
+        self.label_reporte = tk.Label(
+            marco, text="", font=FUENTE_BODY,
+            bg=DARK_CARD, fg=WHITE, wraplength=480, justify="left",
+        )
+        self.label_reporte.pack(anchor="w", pady=(8, 0))
+
+    def _categoria_reporte(self):
+        """Categoría elegida o None (con error en pantalla)."""
+        cat = self.combo_reporte.get().strip()
+        if not cat or cat == "Elige categoría":
+            self._error("Elige una categoría para el reporte")
+            return None
+        return cat
+
+    @staticmethod
+    def _fmt_clp(valor):
+        return f"${valor:,.0f}".replace(",", ".")
+
+    def _reporte_promedio(self):
+        cat = self._categoria_reporte()
+        if cat is None:
+            return
+        prom = self.inventario.calcular_promedio_categoria(cat)
+        if prom is None:
+            msg = f"Sin productos en '{cat}'"
+            self.label_reporte.config(text=msg)
+            _toast(self, msg, tipo="error")
+            return
+        n = sum(1 for p in self.inventario.productos if p.categoria.lower() == cat.lower())
+        msg = f"Promedio '{cat}': {self._fmt_clp(prom)} ({n} productos)"
+        self.label_reporte.config(text=msg)
+        _toast(self, msg, tipo="exito")
+
+    def _reporte_menor_stock(self):
+        cat = self._categoria_reporte()
+        if cat is None:
+            return
+        prod = self.inventario.producto_menor_stock_categoria(cat)
+        if prod is None:
+            msg = f"Sin productos en '{cat}'"
+            self.label_reporte.config(text=msg)
+            _toast(self, msg, tipo="error")
+            return
+        msg = f"Menor stock '{cat}': {prod.nombre} ({prod.stock} uds.)"
+        self.label_reporte.config(text=msg)
+        _toast(self, msg, tipo="exito")
 
     def _crear_formulario(self, parent):
         """Formulario mínimo de productos: agregar / editar / eliminar."""
@@ -506,5 +574,17 @@ class PantallaAdmin(tk.Frame):
                 except Exception:
                     pass
                 self.btn_carritos.config(text="VER CARRITOS ACTIVOS")
+                try:
+                    self.entry_categoria["values"] = self.inventario.obtener_categorias()
+                except Exception:
+                    pass
+                if hasattr(self, "combo_reporte"):
+                    try:
+                        actual = self.combo_reporte.get()
+                        self.combo_reporte["values"] = self.inventario.obtener_categorias()
+                        if actual not in list(self.combo_reporte["values"]) + ["Elige categoría"]:
+                            self.combo_reporte.set("Elige categoría")
+                    except Exception:
+                        pass
         except Exception:
             pass

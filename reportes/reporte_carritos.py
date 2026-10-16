@@ -80,19 +80,25 @@ def normalizar_run(run):
     return limpio.upper()
 
 def buscar_ventas_por_clientes(ventas, run_cliente):
-    run_buscado = normalizar_run(run_cliente)
-    if not run_buscado:
-        return []
-
-    buscado_plano = str(run_cliente or "").strip().lower()
+    """Búsqueda parcial como la de productos: subtexto case-insensitive
+    sobre cliente/email/RUN (campos 'cliente', 'run' y legacy 'run_cliente').
+    Vacío → todas. Además compara sin puntos/guion para el RUT."""
+    texto = str(run_cliente or "").strip().lower()
+    if not texto:
+        return sorted(list(ventas or []), key=lambda x: str(x.get("fecha", "")))
+    buscado_norm = normalizar_run(texto)
     resultado = []
-    for v in ventas:
-        # Compat: ventas nuevas guardan "cliente", legacy usaba "run_cliente".
-        valor = v.get("run_cliente", "") or v.get("cliente", "")
-        if normalizar_run(valor) == run_buscado:
-            resultado.append(v)
-        elif str(valor or "").strip().lower() == buscado_plano:
-            resultado.append(v)
+    for v in ventas or []:
+        if not isinstance(v, dict):
+            continue
+        candidatos = [v.get("cliente", ""), v.get("run", ""), v.get("run_cliente", "")]
+        for valor in candidatos:
+            crudo = str(valor or "").strip().lower()
+            if not crudo:
+                continue
+            if texto in crudo or (buscado_norm and buscado_norm in normalizar_run(crudo)):
+                resultado.append(v)
+                break
 
     resultado.sort(key=lambda x: str(x.get("fecha","")))
     return resultado
