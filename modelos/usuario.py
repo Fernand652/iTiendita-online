@@ -41,13 +41,23 @@ except ImportError:  # fallback ejecucion directa dentro de modelos/
 class Usuario:
     """Representa un usuario registrado: nombre + rol (admin o normal)."""
 
-    def __init__(self, nombre, password, rol="normal"):
+    def __init__(self, nombre, password, rol="normal", nombres="", apellidos="", pais=""):
         self.nombre = nombre
         self.password = password
         self.rol = rol if rol in ("admin", "normal") else "normal"
+        self.nombres = (nombres or "").strip()
+        self.apellidos = (apellidos or "").strip()
+        self.pais = (pais or "").strip()
 
     def to_dict(self):
-        return {"nombre": self.nombre, "password": self.password, "rol": self.rol}
+        datos = {"nombre": self.nombre, "password": self.password, "rol": self.rol}
+        if self.nombres:
+            datos["nombres"] = self.nombres
+        if self.apellidos:
+            datos["apellidos"] = self.apellidos
+        if self.pais:
+            datos["pais"] = self.pais
+        return datos
 
     @classmethod
     def from_dict(cls, datos):
@@ -60,7 +70,10 @@ class Usuario:
         raw = datos.get("password", None)
         if raw is None:
             raw = datos.get("password_hash", "")
-        return cls(datos["nombre"], raw, rol)
+        return cls(datos["nombre"], raw, rol,
+                   nombres=datos.get("nombres", ""),
+                   apellidos=datos.get("apellidos", ""),
+                   pais=datos.get("pais", ""))
 
     def es_admin(self):
         return self.rol == "admin"
@@ -142,7 +155,10 @@ class GestorUsuarios:
             raw = d.get("password", None)
             if raw is None:
                 raw = d.get("password_hash", "")
-            usuarios.append(Usuario(nombre, str(raw), rol))
+            usuarios.append(Usuario(nombre, str(raw), rol,
+                                    nombres=d.get("nombres", ""),
+                                    apellidos=d.get("apellidos", ""),
+                                    pais=d.get("pais", "")))
 
         # Si la migración agregó roles, persistirla una vez
         if any("rol" not in d for d in datos) if isinstance(datos, list) and datos else False:
@@ -190,7 +206,7 @@ class GestorUsuarios:
                 return u.rol == "admin"
         return False
 
-    def registrar_usuario(self, nombre, password):
+    def registrar_usuario(self, nombre, password, nombres="", apellidos="", pais=""):
         """
         Registra un usuario nuevo con rol "normal".
         Retorna el Usuario creado, o None si el nombre/contraseña no
@@ -202,7 +218,8 @@ class GestorUsuarios:
             return None
         if self.existe_usuario(nombre):
             return None
-        nuevo = Usuario(nombre, password, rol="normal")
+        nuevo = Usuario(nombre, password, rol="normal",
+                        nombres=nombres, apellidos=apellidos, pais=pais)
         self.usuarios.append(nuevo)
         self._guardar()
         return nuevo
