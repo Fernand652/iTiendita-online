@@ -434,6 +434,9 @@ class PantallaAdmin(tk.Frame):
         tk.Button(panel, text="Eliminar seleccionado", font=FUENTE_BOTON,
                   bg="#c0392b", fg=WHITE, relief="flat", bd=0, cursor="hand2",
                   command=self._eliminar).pack(fill="x", ipady=8, pady=4)
+        tk.Button(panel, text="Vaciar inventario", font=FUENTE_NAV,
+                  bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
+                  command=self._vaciar_inventario).pack(fill="x", ipady=6, pady=4)
         tk.Button(panel, text="Limpiar formulario", font=FUENTE_NAV,
                   bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
                   command=self._limpiar_formulario).pack(fill="x", ipady=6, pady=(15, 0))
@@ -518,6 +521,22 @@ class PantallaAdmin(tk.Frame):
         if not messagebox.askyesno("Confirmar eliminación", f"¿Eliminar '{producto.nombre}'?"):
             return
         self.inventario.eliminar_producto(self.id_seleccionado)
+        self._refrescar_tabla()
+        self._limpiar_formulario()
+
+    def _vaciar_inventario(self):
+        """Hito 2 ADMIN: elimina TODOS los productos (con confirmación)."""
+        if not self.inventario.productos:
+            self.label_error.config(text="El inventario ya está vacío")
+            return
+        n = len(self.inventario.productos)
+        if not messagebox.askyesno(
+            "Vaciar inventario",
+            f"¿Eliminar los {n} productos del inventario? No se puede deshacer.",
+        ):
+            return
+        self.inventario.vaciar_inventario()
+        _toast(self, f"Inventario vaciado ({n} productos)", tipo="exito")
         self._refrescar_tabla()
         self._limpiar_formulario()
 
