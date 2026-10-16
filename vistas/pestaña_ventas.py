@@ -19,7 +19,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 
 try:
     from vistas.estilos import (
@@ -219,7 +219,9 @@ class PestanaVentas(tk.Frame):
         for iid in self.tabla.get_children():
             self.tabla.delete(iid)
         total_acum = 0.0
-        for v in self._vista:
+        # iid por posición (v-0, v-1...): ventas.json puede traer id_venta
+        # duplicados o ausentes y el Treeview no acepta iids repetidos.
+        for idx, v in enumerate(self._vista):
             try:
                 vid = v.get("id_venta", "?")
                 fecha = v.get("fecha", "Sin fecha")
@@ -229,8 +231,11 @@ class PestanaVentas(tk.Frame):
             except (TypeError, ValueError, AttributeError):
                 continue
             total_acum += total
-            self.tabla.insert("", "end", iid=f"v-{vid}",
-                              values=(vid, fecha, _cliente_de(v), run, uds, _fmt_clp(total)))
+            try:
+                self.tabla.insert("", "end", iid=f"v-{idx}",
+                                  values=(vid, fecha, _cliente_de(v), run, uds, _fmt_clp(total)))
+            except Exception:
+                continue
         n = len(self._vista)
         self.label_resumen.config(
             text=f"Ventas: {n} | Monto total: {_fmt_clp(total_acum)}" if n else "Sin ventas registradas"
@@ -241,8 +246,11 @@ class PestanaVentas(tk.Frame):
         sel = self.tabla.selection()
         if not sel:
             return
-        iid = sel[0]
-        venta = next((v for v in self._vista if f"v-{v.get('id_venta', '?')}" == iid), None)
+        try:
+            idx = int(str(sel[0]).split("-", 1)[1])
+            venta = self._vista[idx]
+        except (IndexError, ValueError, AttributeError):
+            return
         self._mostrar_detalle(venta)
 
     def _mostrar_detalle(self, v):
@@ -309,7 +317,18 @@ def abrir_ventana_ventas(parent):
         win.configure(bg=BG_DARK)
     except Exception:
         pass
-    PestanaVentas(win).pack(fill="both", expand=True)
+    try:
+        PestanaVentas(win).pack(fill="both", expand=True)
+    except Exception as e:
+        try:
+            win.destroy()
+        except Exception:
+            pass
+        try:
+            messagebox.showerror("Ventas", f"No se pudo abrir el detalle de ventas:\n{e}")
+        except Exception:
+            pass
+        return None
     try:
         win.transient(root)
         win.grab_set()
