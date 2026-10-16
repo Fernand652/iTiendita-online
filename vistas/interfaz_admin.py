@@ -324,6 +324,18 @@ class PantallaAdmin(tk.Frame):
             self.entry_id.config(state="readonly")
             self.entry_categoria.set(producto.categoria)
             self.label_error.config(text="")
+            if self._origen_imagen_tmp:
+                _toast(self, "Foto pendiente conservada: pulsa Guardar para aplicarla", tipo="info")
+                return
+            self._ruta_imagen_tmp = producto.imagen
+            self._origen_imagen_tmp = None
+            self._set_entry_imagen(producto.imagen or "")
+            if producto.imagen:
+                base = self._raiz_proyecto()
+                ruta_abs = producto.imagen if os.path.isabs(producto.imagen) else os.path.join(base, producto.imagen)
+                self._mostrar_preview(ruta_abs)
+            else:
+                self._mostrar_preview(None)
         except Exception:
             pass
         return None
@@ -424,6 +436,7 @@ class PantallaAdmin(tk.Frame):
             cats = []
         self.entry_categoria = ttk.Combobox(panel, font=FUENTE_BODY, values=cats)
         self.entry_categoria.pack(fill="x", ipady=2)
+        self._campo_imagen(panel)
         self.label_error = tk.Label(panel, text="", font=(FUENTE_BODY[0], 9),
                                     bg=DARK_CARD, fg="#ff6b6b", wraplength=220, justify="left")
         self.label_error.pack(anchor="w", pady=(8, 8))
@@ -446,6 +459,108 @@ class PantallaAdmin(tk.Frame):
         entry = tk.Entry(parent, font=FUENTE_BODY, relief="flat", bd=4)
         entry.pack(fill="x", ipady=4)
         return entry
+
+    def _campo_imagen(self, parent):
+        """Imagen PNG: Examinar/Quitar + preview. Se copia a data/imagenes/ al Guardar."""
+        tk.Label(parent, text="Imagen (PNG)", font=FUENTE_NAV, bg=DARK_CARD, fg=GRAY_TEXT).pack(anchor="w", pady=(8, 2))
+        self.entry_imagen = tk.Entry(parent, font=FUENTE_BODY, relief="flat", bd=4, state="readonly")
+        self.entry_imagen.pack(fill="x", ipady=4)
+        btns = tk.Frame(parent, bg=DARK_CARD)
+        btns.pack(fill="x", pady=(4, 0))
+        tk.Button(
+            btns, text="Examinar PNG", font=FUENTE_NAV,
+            bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
+            command=self._examinar_imagen
+        ).pack(side="left", expand=True, fill="x", padx=(0, 4), ipady=4)
+        tk.Button(
+            btns, text="Quitar", font=FUENTE_NAV,
+            bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
+            command=self._quitar_imagen
+        ).pack(side="left", expand=True, fill="x", padx=(4, 0), ipady=4)
+        self.lbl_preview = tk.Label(parent, text="Sin imagen", font=FUENTE_BODY, bg="#e4e4e4", fg=GRAY_TEXT, width=28, height=4)
+        self.lbl_preview.pack(fill="x", pady=(8, 0))
+
+    def _raiz_proyecto(self):
+        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def _dir_imagenes(self):
+        d = os.path.join(self._raiz_proyecto(), "data", "imagenes")
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    def _set_entry_imagen(self, texto):
+        self.entry_imagen.config(state="normal")
+        self.entry_imagen.delete(0, tk.END)
+        if texto:
+            self.entry_imagen.insert(0, texto)
+        self.entry_imagen.config(state="readonly")
+
+    def _mostrar_preview(self, ruta):
+        """Preview 190x140 con PNG nativo; fallback a texto si falla."""
+        try:
+            if ruta and os.path.exists(ruta):
+                img = tk.PhotoImage(file=ruta)
+                fx = max(1, img.width() // 190 + (1 if img.width() % 190 else 0))
+                fy = max(1, img.height() // 140 + (1 if img.height() % 140 else 0))
+                f = max(fx, fy)
+                if f > 1:
+                    img = img.subsample(f, f)
+                self._preview_img = img
+                self.lbl_preview.config(image=img, text="", width=190, height=140)
+                return
+        except Exception:
+            pass
+        self._preview_img = None
+        self.lbl_preview.config(image="", text="Sin imagen", width=28, height=4)
+
+    def _examinar_imagen(self):
+        origen = filedialog.askopenfilename(
+            title="Elegir imagen PNG del producto",
+            filetypes=[("PNG", "*.png"), ("Todos", "*.*")],
+        )
+        if not origen:
+            return
+        if not origen.lower().endswith(".png"):
+            self.label_error.config(text="Solo se permiten imágenes PNG (nativo)")
+            return
+        try:
+            tk.PhotoImage(file=origen)
+        except Exception:
+            self.label_error.config(text="Ese PNG no se pudo leer")
+            return
+        self._origen_imagen_tmp = origen
+        self._set_entry_imagen(os.path.basename(origen) + " (pendiente)")
+        self._mostrar_preview(origen)
+        self.label_error.config(text="")
+        _toast(self, "PNG listo: pulsa Guardar para copiarlo a data/imagenes/", tipo="exito")
+
+    def _quitar_imagen(self):
+        self._origen_imagen_tmp = None
+        self._ruta_imagen_tmp = None
+        self._set_entry_imagen("")
+        self._mostrar_preview(None)
+        self.label_error.config(text="")
+
+    def _copiar_imagen_al_guardar(self, id_producto):
+        """Copia el PNG a data/imagenes/id_<id>.png. Retorna (ruta_rel, error)."""
+        if not self._origen_imagen_tmp:
+            return self._ruta_imagen_tmp, None
+        if not os.path.exists(self._origen_imagen_tmp):
+            return self._ruta_imagen_tmp, f"Origen no existe: {self._origen_imagen_tmp}"
+        destino = os.path.join(self._dir_imagenes(), f"id_{id_producto}.png")
+        try:
+            shutil.copyfile(self._origen_imagen_tmp, destino)
+        except Exception as e:
+            return self._ruta_imagen_tmp, f"No se pudo copiar el PNG: {e}"
+        try:
+            if not os.path.exists(destino) or os.path.getsize(destino) == 0:
+                return self._ruta_imagen_tmp, f"La copia quedó vacía o no existe: {destino}"
+            tk.PhotoImage(file=destino)
+        except Exception as e:
+            return self._ruta_imagen_tmp, f"La copia no se puede leer: {e}"
+        rel = os.path.join("data", "imagenes", f"id_{id_producto}.png").replace(os.sep, "/")
+        self._origen_imagen_tmp = None
+        return rel, None
 
     def _leer_formulario(self):
         id_txt = self.entry_id.get().strip()
@@ -495,15 +610,34 @@ class PantallaAdmin(tk.Frame):
     def _guardar(self):
         datos = self._leer_formulario()
         if datos is None:
+            if self._origen_imagen_tmp:
+                _toast(self, "Corrige el formulario (foto PNG conservada)", tipo="info")
             return
         id_manual, nombre, precio, stock, categoria = datos
         try:
             if self.id_seleccionado is None:
-                self.inventario.agregar_producto(nombre, precio, stock, categoria, id=id_manual)
+                nuevo = self.inventario.agregar_producto(nombre, precio, stock, categoria, imagen=None, id=id_manual)
+                ruta_rel, err = self._copiar_imagen_al_guardar(nuevo.id)
+                if err:
+                    self.id_seleccionado = nuevo.id
+                    self.titulo_formulario.config(text=f"Editando #{nuevo.id}")
+                    self.btn_guardar.config(text="Actualizar Producto")
+                    self.label_error.config(text=err + " (producto guardado sin foto, reintenta)")
+                    self._refrescar_tabla()
+                    return
+                if ruta_rel != nuevo.imagen:
+                    self.inventario.actualizar_producto(nuevo.id, nombre, precio, stock, categoria, imagen=ruta_rel)
+                self._ruta_imagen_tmp = ruta_rel
+                _toast(self, f"Producto '{nombre}' agregado", tipo="exito")
             else:
-                anterior = self.inventario.buscar_por_id(self.id_seleccionado)
-                img = getattr(anterior, "imagen", None) if anterior else None
-                self.inventario.actualizar_producto(self.id_seleccionado, nombre, precio, stock, categoria, imagen=img)
+                ruta_rel, err = self._copiar_imagen_al_guardar(self.id_seleccionado)
+                if err:
+                    self.label_error.config(text=err + " (no se guardó la foto, reintenta)")
+                    self._refrescar_tabla()
+                    return
+                self.inventario.actualizar_producto(self.id_seleccionado, nombre, precio, stock, categoria, imagen=ruta_rel)
+                self._ruta_imagen_tmp = ruta_rel
+                _toast(self, f"Producto '{nombre}' actualizado", tipo="exito")
         except ValueError as e:
             self.label_error.config(text=str(e))
             return
@@ -521,6 +655,15 @@ class PantallaAdmin(tk.Frame):
         if not messagebox.askyesno("Confirmar eliminación", f"¿Eliminar '{producto.nombre}'?"):
             return
         self.inventario.eliminar_producto(self.id_seleccionado)
+        # Borra su PNG para no dejar huérfanos en data/imagenes/
+        try:
+            img = (producto.imagen or "").replace("\\", "/")
+            if img.startswith("data/imagenes/"):
+                abs_img = os.path.join(self._raiz_proyecto(), img)
+                if os.path.exists(abs_img):
+                    os.remove(abs_img)
+        except Exception:
+            pass
         self._refrescar_tabla()
         self._limpiar_formulario()
 
@@ -535,7 +678,17 @@ class PantallaAdmin(tk.Frame):
             f"¿Eliminar los {n} productos del inventario? No se puede deshacer.",
         ):
             return
+        imagenes = [(p.imagen or "").replace("\\", "/") for p in self.inventario.productos]
         self.inventario.vaciar_inventario()
+        # Borra los PNG huérfanos de data/imagenes/
+        for img in imagenes:
+            try:
+                if img.startswith("data/imagenes/"):
+                    abs_img = os.path.join(self._raiz_proyecto(), img)
+                    if os.path.exists(abs_img):
+                        os.remove(abs_img)
+            except Exception:
+                pass
         _toast(self, f"Inventario vaciado ({n} productos)", tipo="exito")
         self._refrescar_tabla()
         self._limpiar_formulario()
@@ -552,6 +705,13 @@ class PantallaAdmin(tk.Frame):
             self.entry_precio.delete(0, tk.END)
             self.entry_stock.delete(0, tk.END)
             self.entry_categoria.set("")
+            self._ruta_imagen_tmp = None
+            self._origen_imagen_tmp = None
+            try:
+                self._set_entry_imagen("")
+                self._mostrar_preview(None)
+            except Exception:
+                pass
             if self.tabla.selection():
                 self.tabla.selection_remove(self.tabla.selection())
         except Exception:
