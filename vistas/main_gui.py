@@ -25,6 +25,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import tkinter as tk
+import socket
 
 try:
     from vistas.estilos import BG_DARK
@@ -96,7 +97,7 @@ class RetroVaultApp:
     root.after(). Ver _bombeo_de_eventos.
     """
 
-    def __init__(self, root, servidor=None, conexion=None):
+    def __init__(self, root, servidor=None, conexion=None, inventario=None):
         self.root = root
         self.root.title("RetroVault")
         self.root.geometry("1100x700")
@@ -106,7 +107,10 @@ class RetroVaultApp:
         # La persistencia vive en data/productos.json y data/usuarios.json
         # (ver persistencia/gestor_persistencia.py).
         self.gestor_usuarios = GestorUsuarios()
-        self.inventario = Inventario()
+        # Cuando esta instancia es el ADMIN, el servidor y la interfaz deben
+        # compartir exactamente el mismo catálogo en memoria. De lo contrario
+        # el administrador edita una copia y los clientes reciben otra.
+        self.inventario = inventario or (servidor.inventario if servidor is not None else Inventario())
         # Sesión actual: nombre de usuario logueado o None (invitado)
         self.usuario_actual = None
         # Carritos por cliente: {usuario: [{'producto': Producto, 'cantidad': int}]}
@@ -124,6 +128,14 @@ class RetroVaultApp:
         # Identidad con la que el servidor guarda nuestro carrito mientras
         # somos invitados (todavía no hay usuario con nombre).
         self._id_remoto = self.usuario_actual or "invitado"
+
+        # Una caja cliente debe registrarse apenas abre: así recibe el
+        # catálogo del ADMIN sin esperar a que alguien inicie sesión. El id
+        # temporal evita que dos invitados compartan por error un carrito.
+        if self.conexion is not None and self.conexion.conectado:
+            nombre_equipo = socket.gethostname().strip() or "caja"
+            self._id_remoto = f"invitado-{nombre_equipo}-{id(self) % 100000}"
+            self.conexion.registrarse(self._id_remoto)
 
         # Foto del catálogo, para detectar cuándo lo editamos y avisarle a
         # los clientes conectados.
@@ -340,16 +352,18 @@ class RetroVaultApp:
             if elemento["producto"].id == producto.id:
                 if producto.stock <= 0:
                     return False, f"Stock máximo ({elemento['cantidad']}) en el carrito"
-                if not self.inventario.descontar_stock(producto.id, 1):
-                    return False, f"Sin stock disponible de {producto.nombre}"
+                if self.conexion is None or not self.conexion.conectado:
+                    if not self.inventario.descontar_stock(producto.id, 1):
+                        return False, f"Sin stock disponible de {producto.nombre}"
                 elemento["cantidad"] += 1
                 self._notificar_carrito()
                 return True, f"Añadido: {producto.nombre} x{elemento['cantidad']}"
         # Si no está, lo agrega por primera vez
         if producto.stock <= 0:
             return False, f"{producto.nombre} sin stock"
-        if not self.inventario.descontar_stock(producto.id, 1):
-            return False, f"{producto.nombre} sin stock"
+        if self.conexion is None or not self.conexion.conectado:
+            if not self.inventario.descontar_stock(producto.id, 1):
+                return False, f"{producto.nombre} sin stock"
         self.carrito.append({"producto": producto, "cantidad": 1})
         self._notificar_carrito()
         return True, f"Añadido: {producto.nombre}"
@@ -358,7 +372,8 @@ class RetroVaultApp:
         """Quita 1 unidad del carrito y la devuelve al stock."""
         if elemento not in self.carrito:
             return self.carrito
-        self.inventario.devolver_stock(elemento["producto"].id, 1)
+        if self.conexion is None or not self.conexion.conectado:
+            self.inventario.devolver_stock(elemento["producto"].id, 1)
         elemento["cantidad"] -= 1
         if elemento["cantidad"] <= 0:
             self.carrito.remove(elemento)
@@ -369,9 +384,10 @@ class RetroVaultApp:
         """Saca el producto del carrito y devuelve todo su stock reservado."""
         if elemento not in self.carrito:
             return self.carrito
-        self.inventario.devolver_stock(
-            elemento["producto"].id, elemento["cantidad"]
-        )
+        if self.conexion is None or not self.conexion.conectado:
+            self.inventario.devolver_stock(
+                elemento["producto"].id, elemento["cantidad"]
+            )
         self.carrito.remove(elemento)
         self._notificar_carrito()
         return self.carrito
@@ -387,10 +403,11 @@ class RetroVaultApp:
         return max_id+1
     def _vaciar_carrito(self):
         """Vacía el carrito del usuario activo y restaura el stock."""
-        for elemento in list(self.carrito):
-            self.inventario.devolver_stock(
-                elemento["producto"].id, elemento["cantidad"]
-            )
+        if self.conexion is None or not self.conexion.conectado:
+            for elemento in list(self.carrito):
+                self.inventario.devolver_stock(
+                    elemento["producto"].id, elemento["cantidad"]
+                )
         self.carrito.clear()
         self._notificar_carrito()
         return self.carrito

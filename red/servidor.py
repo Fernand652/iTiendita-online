@@ -291,12 +291,20 @@ class ServidorCarritos(threading.Thread):
         usuario = str(mensaje.get("usuario") or "").strip()
         rol = str(mensaje.get("rol") or "normal")
 
+        tocados = []
         with self._lock:
             if conexion not in self.clientes:
                 return None
+            anterior = self.clientes[conexion].get("usuario")
+            # Un cliente entra primero como invitado para recibir el catálogo
+            # y después puede iniciar sesión. Su carrito temporal debe dejar
+            # de reservar stock antes de asociar el mismo socket al usuario.
+            if anterior and anterior != usuario:
+                _, tocados = self._reconciliar(anterior, {})
             self.clientes[conexion]["usuario"] = usuario
             self.clientes[conexion]["rol"] = rol
 
+        self._difundir_stock(tocados)
         # Le mandamos el catálogo COMPLETO para que pueda explorar.
         self._enviar(conexion, {"type": T_INVENTARIO, "productos": self._catalogo()})
         self._difundir_carritos()
@@ -315,13 +323,9 @@ class ServidorCarritos(threading.Thread):
         with self._lock:
             self.carritos[usuario], tocados = self._reconciliar(usuario, deseado)
 
-        # Avisamos los stocks que cambiaron, para que el cliente actualice
-        # los botones "sin stock".
-        for id_producto in tocados:
-            producto = self.inventario.buscar_por_id(id_producto)
-            if producto is not None:
-                self._enviar(conexion, {"type": T_STOCK, "id": producto.id,
-                                        "stock": producto.stock})
+        # Todas las cajas necesitan ver el stock real, no solo la que hizo
+        # el cambio. Esto es lo que hace que funcionen como cajas de autopago.
+        self._difundir_stock(tocados)
 
         # Si el carrito que quedó NO es el que el cliente cree, se lo
         # corregimos (mensaje autoritativo).
@@ -401,9 +405,7 @@ class ServidorCarritos(threading.Thread):
                 self.carritos.pop(usuario, None)
             producto = self.inventario.buscar_por_id(id_producto)
 
-        if producto is not None:
-            self._enviar(conexion, {"type": T_STOCK, "id": producto.id,
-                                    "stock": producto.stock})
+        self._difundir_stock([id_producto])
         self._enviar(conexion, {
             "type": T_CARRITO_ESTADO,
             "items": items_a_lista(self.carritos.get(usuario, {})),
@@ -415,11 +417,7 @@ class ServidorCarritos(threading.Thread):
         with self._lock:
             vacio, tocados = self._reconciliar(usuario, {})
 
-        for id_producto in tocados:
-            producto = self.inventario.buscar_por_id(id_producto)
-            if producto is not None:
-                self._enviar(conexion, {"type": T_STOCK, "id": producto.id,
-                                        "stock": producto.stock})
+        self._difundir_stock(tocados)
         self._enviar(conexion, {"type": T_CARRITO_ESTADO, "items": items_a_lista(vacio)})
         self._difundir_carritos()
 
@@ -493,13 +491,14 @@ class ServidorCarritos(threading.Thread):
         """
         with self._lock:
             self.clientes.pop(conexion, None)
-            liberado, _ = self._reconciliar(usuario, {}) if usuario else ({}, [])
+            liberado, tocados = self._reconciliar(usuario, {}) if usuario else ({}, [])
 
         try:
             conexion.close()
         except OSError:
             pass
 
+        self._difundir_stock(tocados)
         self._difundir_carritos()
 
     # ------------------------------------------------------------------
@@ -516,6 +515,23 @@ class ServidorCarritos(threading.Thread):
                 # Se cayó esa conexión. No importa: la siguiente difusión se
                 # encarga de limpiarla en _procesar_desconexion.
                 pass
+
+    def _difundir_stock(self, ids_producto):
+        """Difunde el stock actualizado a cada caja conectada."""
+        ids = set(ids_producto or [])
+        if not ids:
+            return
+        with self._lock:
+            conexiones = list(self.clientes.keys())
+            cambios = []
+            for id_producto in ids:
+                producto = self.inventario.buscar_por_id(id_producto)
+                if producto is not None:
+                    cambios.append({"type": T_STOCK, "id": producto.id,
+                                    "stock": producto.stock})
+        for mensaje in cambios:
+            for conexion in conexiones:
+                self._enviar(conexion, mensaje)
 
     def difundir_inventario(self):
         """

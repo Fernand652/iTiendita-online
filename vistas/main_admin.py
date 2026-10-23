@@ -36,7 +36,9 @@ def main():
     inventario = Inventario()
     servidor = ServidorCarritos(inventario, host=args.host, puerto=args.puerto)
     servidor.start()
-    app = RetroVaultApp(root, servidor=servidor)
+    # La interfaz y el servidor comparten el mismo Inventario: este equipo
+    # es la única fuente de verdad para catálogo, stock y carritos.
+    app = RetroVaultApp(root, servidor=servidor, inventario=inventario)
     root.title('RetroVault - ADMIN')
 
     def _avisar_si_fallo():
@@ -56,6 +58,10 @@ def main():
     print(f'[ADMIN] Servidor escuchando en {args.host}:{args.puerto}')
     if args.host in ('127.0.0.1', 'localhost'):
         print('[ADMIN] Para red: py vistas/main_admin.py --host 0.0.0.0')
+    elif args.host == '0.0.0.0':
+        ip_lan = _ip_lan()
+        if ip_lan:
+            print(f'[ADMIN] Las cajas cliente deben usar: py vistas/main_cliente.py --host {ip_lan}')
     root.mainloop()
 
 
