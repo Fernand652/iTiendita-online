@@ -43,7 +43,8 @@ def main():
 
     def _avisar_si_fallo():
         if servidor.error:
-            messagebox.showerror('No se pudo iniciar el servidor', servidor.error)
+            messagebox.showerror('No se pudo iniciar el servidor', servidor.error, parent=root)
+            root.destroy()
         else:
             root.after(300, _avisar_si_fallo)
     root.after(300, _avisar_si_fallo)

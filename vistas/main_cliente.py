@@ -21,24 +21,31 @@ def _argumentos():
 
 def main():
     args = _argumentos()
+    root = tk.Tk()
+    # No mostramos la tienda antes de verificar la conexión: una caja sin
+    # servidor no puede trabajar con su catálogo local, porque daría la falsa
+    # impresión de estar sincronizada.
+    root.withdraw()
     conexion = ConexionServidor(args.host, args.puerto)
     if not conexion.conectar():
-        messagebox.showwarning('Sin servidor', conexion.error or 'No se pudo conectar')
-        conexion = None
-    if conexion is not None:
-        conexion.start()
-    root = tk.Tk()
+        messagebox.showerror(
+            'No se pudo conectar con el ADMIN',
+            conexion.error or 'Revisa la IP del ADMIN y la red privada de Windows.',
+            parent=root,
+        )
+        root.destroy()
+        return
+    conexion.start()
+    root.deiconify()
     app = RetroVaultApp(root, conexion=conexion)
     root.title('RetroVault - CLIENTE')
     def _al_cerrar():
         try:
-            if conexion is not None:
-                conexion.cerrar()
+            conexion.cerrar()
         finally:
             root.destroy()
     root.protocol('WM_DELETE_WINDOW', _al_cerrar)
-    if conexion is not None:
-        print(f'[CLIENTE] Conectado a {args.host}:{args.puerto}')
+    print(f'[CLIENTE] Conectado al catálogo compartido en {args.host}:{args.puerto}')
     root.mainloop()
 
 
