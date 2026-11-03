@@ -23,6 +23,10 @@ try:
 except ImportError:
     from despacho import Despacho
 try:
+    from modelos.cupon import Cupon
+except ImportError:
+    from cupon import Cupon
+try:
     from modelos.producto import Producto
 except ImportError:
     try:
@@ -87,6 +91,10 @@ class carrito(tk.Frame):
 
         # Variables Item 4: Totales e IVA
         self.subtotal_actual = 0.0
+        self.descuento_actual = 0.0
+        self.cupon_activo = None
+        # Catálogo temporal: administración/persistencia queda para el próximo avance.
+        self.cupones = {"CYBER10": Cupon("CYBER10", "porcentaje", 10, "2026-12-31", 50)}
         self.envio_actual = 0.0
         self.iva_actual = 0.0
         self.total_actual = 0.0
@@ -154,6 +162,23 @@ class carrito(tk.Frame):
         self.lbl_subtotal = tk.Label(fila_subtotal, text="$0,00", font=FUENTE_BODY, bg=DARK_CARD, fg=WHITE)
         self.lbl_subtotal.pack(side="right")
 
+        fila_descuento = tk.Frame(resumen, bg=DARK_CARD)
+        fila_descuento.pack(fill="x", pady=4)
+        tk.Label(fila_descuento, text="Descuento", font=FUENTE_BODY, bg=DARK_CARD, fg=GRAY_TEXT).pack(side="left")
+        self.lbl_descuento = tk.Label(fila_descuento, text="$0,00", font=FUENTE_BODY, bg=DARK_CARD, fg=GREEN)
+        self.lbl_descuento.pack(side="right")
+
+        fila_neto = tk.Frame(resumen, bg=DARK_CARD)
+        fila_neto.pack(fill="x", pady=4)
+        tk.Label(fila_neto, text="Subtotal neto", font=FUENTE_BODY, bg=DARK_CARD, fg=GRAY_TEXT).pack(side="left")
+        self.lbl_neto = tk.Label(fila_neto, text="$0,00", font=FUENTE_BODY, bg=DARK_CARD, fg=WHITE)
+        self.lbl_neto.pack(side="right")
+
+        self.entry_cupon = tk.Entry(resumen, font=FUENTE_BODY, bg=BG_DARK, fg=WHITE, insertbackground=WHITE, relief="flat")
+        self.entry_cupon.pack(fill="x", ipady=5, pady=(8, 3))
+        tk.Button(resumen, text="APLICAR CUPÓN", font=FUENTE_BOTON, command=self.aplicar_cupon,
+                  bg=GRAY_BTN, fg=WHITE, relief="flat").pack(fill="x", ipady=5, pady=(0, 5))
+
         fila_envio = tk.Frame(resumen, bg=DARK_CARD)
         fila_envio.pack(fill="x", pady=4)
         tk.Label(fila_envio, text="Envío", font=FUENTE_BODY, bg=DARK_CARD, fg=GRAY_TEXT).pack(side="left")
@@ -176,13 +201,13 @@ class carrito(tk.Frame):
         self.lbl_total = tk.Label(fila_total, text="$0,00", font=FUENTE_HERO, bg=DARK_CARD, fg=GREEN)
         self.lbl_total.pack(side="right")
 
-        tk.frame(resumen, bg=GRAY_BTN, height=1).pack(fill="x", pady=(4, 4))
+        tk.Frame(resumen, bg=GRAY_BTN, height=1).pack(fill="x", pady=(4, 4))
         tk.Label(resumen, text="ENTREGA", font=FUENTE_CATEGORIA, bg=DARK_CARD, fg=GRAY_TEXT).pack(anchor="w", pady=(0, 4))
         self.combo_modalidad=ttk.Combobox(resumen, font=FUENTE_BODY, state="readonly", values=["Retiro en tienda", "Despacho a domicilio"])
         self.combo_modalidad.set("Retiro en tienda")
         self.combo_modalidad.pack(fill="x", pady=(0, 4))
         self.combo_modalidad.bind("<<ComboboxSelected>>", lambda e: self._actualizar_totales())
-        self.combo_region= ttk.combobox(resumen,values=Despacho.REGIONES, state="readonly", font=FUENTE_BODY)
+        self.combo_region= ttk.Combobox(resumen,values=Despacho.REGIONES, state="readonly", font=FUENTE_BODY)
         self.combo_region.set(Despacho.REGION_TIENDA)
         self.combo_region.pack(fill="x", pady=(0, 4))
         self.combo_region.bind("<<ComboboxSelected>>", lambda e: self._actualizar_totales())
@@ -220,6 +245,18 @@ class carrito(tk.Frame):
 
     def _limpiar_mensaje(self):
         self.lbl_mensaje.config(text="")
+
+    def aplicar_cupon(self):
+        codigo = self.entry_cupon.get().strip().upper()
+        cupon = self.cupones.get(codigo)
+        if cupon is None:
+            self.cupon_activo = None
+            self._mostrar_mensaje("El cupón no existe", tipo="error")
+        else:
+            descuento, motivo = cupon.calcular_descuento(self.subtotal_actual)
+            self.cupon_activo = cupon if descuento else None
+            self._mostrar_mensaje(motivo, tipo="exito" if descuento else "error")
+        self._actualizar_totales()
 
     # METODOS DE GESTIÓN DE PRODUCTOS (Requisito 1: intactos)
     def mostrar_productos(self, items):
@@ -328,6 +365,7 @@ class carrito(tk.Frame):
         self.despacho_actual = Despacho(modalidad, self.combo_region.get(),self.usuario_actual or "")
         if not self.lista_actual:
             self.subtotal_actual = 0.0
+            self.descuento_actual = 0.0
             self.envio_actual=0.0
             self.iva_actual = 0.0
             self.total_actual = 0.0
@@ -339,9 +377,12 @@ class carrito(tk.Frame):
                 cant = item["cantidad"]
                 subtotal += float(prod.precio) * cant
             self.subtotal_actual = subtotal
+            self.descuento_actual = (self.cupon_activo.calcular_descuento(subtotal)[0]
+                                     if self.cupon_activo else 0.0)
             self.envio_actual = self.despacho_actual.calcular(subtotal)
-            self.iva_actual = (self.subtotal_actual + self.envio_actual) * 0.19
-            self.total_actual = self.subtotal_actual + self.iva_actual+ self.envio_actual
+            subtotal_neto = self.subtotal_actual - self.descuento_actual
+            self.iva_actual = (subtotal_neto + self.envio_actual) * 0.19
+            self.total_actual = subtotal_neto + self.iva_actual + self.envio_actual
         # Formato numérico estándar chileno
         sub_str = f"{self.subtotal_actual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         envio_str = f"{self.envio_actual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -349,6 +390,8 @@ class carrito(tk.Frame):
         tot_str = f"{self.total_actual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
         self.lbl_subtotal.config(text=f"${sub_str}")
+        self.lbl_descuento.config(text=f"-${self.descuento_actual:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        self.lbl_neto.config(text=f"${self.subtotal_actual - self.descuento_actual:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
         self.lbl_envio.config(text=f"${envio_str}")
         self.lbl_iva.config(text=f"${iva_str}")
         self.lbl_total.config(text=f"${tot_str}")
