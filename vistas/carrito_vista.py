@@ -10,7 +10,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import tkinter as tk
-
+from tkinter import ttk
 try:
     from vistas.estilos import *
 except ImportError:
@@ -18,7 +18,10 @@ except ImportError:
         from estilos import *
     except ImportError:
         from vistas.estilos import *
-
+try:
+    from modelos.despacho import Despacho
+except ImportError:
+    from despacho import Despacho
 try:
     from modelos.producto import Producto
 except ImportError:
@@ -84,8 +87,10 @@ class carrito(tk.Frame):
 
         # Variables Item 4: Totales e IVA
         self.subtotal_actual = 0.0
+        self.envio_actual = 0.0
         self.iva_actual = 0.0
         self.total_actual = 0.0
+        self.despacho_actual = Despacho()
 
         self._crear_barra_superior()
         self._crear_interfaz()
@@ -139,8 +144,8 @@ class carrito(tk.Frame):
         resumen.pack(side="right", fill="y")
         resumen.pack_propagate(False)
 
-        tk.Label(resumen, text="RESUMEN", font=FUENTE_TITULO, bg=DARK_CARD, fg=WHITE).pack(anchor="w", pady=(0, 15))
-        tk.Frame(resumen, bg=GRAY_BTN, height=1).pack(fill="x", pady=10)
+        tk.Label(resumen, text="RESUMEN", font=FUENTE_TITULO, bg=DARK_CARD, fg=WHITE).pack(anchor="w", pady=(0, 8))
+        tk.Frame(resumen, bg=GRAY_BTN, height=1).pack(fill="x", pady=4)
 
         # 1. Desglose Subtotal
         fila_subtotal = tk.Frame(resumen, bg=DARK_CARD)
@@ -149,6 +154,12 @@ class carrito(tk.Frame):
         self.lbl_subtotal = tk.Label(fila_subtotal, text="$0,00", font=FUENTE_BODY, bg=DARK_CARD, fg=WHITE)
         self.lbl_subtotal.pack(side="right")
 
+        fila_envio = tk.Frame(resumen, bg=DARK_CARD)
+        fila_envio.pack(fill="x", pady=4)
+        tk.Label(fila_envio, text="Envío", font=FUENTE_BODY, bg=DARK_CARD, fg=GRAY_TEXT).pack(side="left")
+        self.lbl_envio = tk.Label(fila_envio, text="$0,00", font=FUENTE_BODY, bg=DARK_CARD, fg=WHITE)
+        self.lbl_envio.pack(side="right")
+
         # 2. Desglose IVA 19%
         fila_iva = tk.Frame(resumen, bg=DARK_CARD)
         fila_iva.pack(fill="x", pady=4)
@@ -156,18 +167,32 @@ class carrito(tk.Frame):
         self.lbl_iva = tk.Label(fila_iva, text="$0,00", font=FUENTE_BODY, bg=DARK_CARD, fg=WHITE)
         self.lbl_iva.pack(side="right")
 
-        tk.Frame(resumen, bg=GRAY_BTN, height=1).pack(fill="x", pady=12)
+        tk.Frame(resumen, bg=GRAY_BTN, height=1).pack(fill="x", pady=8)
 
         # 3. Total Final
         fila_total = tk.Frame(resumen, bg=DARK_CARD)
-        fila_total.pack(fill="x", pady=(0, 20))
+        fila_total.pack(fill="x", pady=(0, 8))
         tk.Label(fila_total, text="TOTAL", font=FUENTE_PRECIO, bg=DARK_CARD, fg=WHITE).pack(side="left")
         self.lbl_total = tk.Label(fila_total, text="$0,00", font=FUENTE_HERO, bg=DARK_CARD, fg=GREEN)
         self.lbl_total.pack(side="right")
 
+        tk.frame(resumen, bg=GRAY_BTN, height=1).pack(fill="x", pady=(4, 4))
+        tk.Label(resumen, text="ENTREGA", font=FUENTE_CATEGORIA, bg=DARK_CARD, fg=GRAY_TEXT).pack(anchor="w", pady=(0, 4))
+        self.combo_modalidad=ttk.Combobox(resumen, font=FUENTE_BODY, state="readonly", values=["Retiro en tienda", "Despacho a domicilio"])
+        self.combo_modalidad.set("Retiro en tienda")
+        self.combo_modalidad.pack(fill="x", pady=(0, 4))
+        self.combo_modalidad.bind("<<ComboboxSelected>>", lambda e: self._actualizar_totales())
+        self.combo_region= ttk.combobox(resumen,values=Despacho.REGIONES, state="readonly", font=FUENTE_BODY)
+        self.combo_region.set(Despacho.REGION_TIENDA)
+        self.combo_region.pack(fill="x", pady=(0, 4))
+        self.combo_region.bind("<<ComboboxSelected>>", lambda e: self._actualizar_totales())
+
+
+
+
         tk.Label(resumen, text="RUN CLIENTE (OPCIONAL):", font=FUENTE_CATEGORIA, bg=DARK_CARD, fg=GRAY_TEXT).pack(anchor="w", pady=(0, 4))
         self.entry_run = tk.Entry(resumen, font=FUENTE_BODY, bg=BG_DARK, fg=WHITE, insertbackground=WHITE, relief="flat")
-        self.entry_run.pack(fill="x", ipady=6, pady=(0, 15))
+        self.entry_run.pack(fill="x", ipady=6, pady=(0, 8))
 
         # Botón Pagar / Confirmar venta
         tk.Button(
@@ -180,14 +205,14 @@ class carrito(tk.Frame):
             resumen, text="", font=FUENTE_BODY,
             bg=DARK_CARD, fg="#ff6b6b", wraplength=270, justify="left"
         )
-        self.lbl_mensaje.pack(fill="x", pady=(10, 0))
+        self.lbl_mensaje.pack(fill="x", pady=(6, 0))
 
 #Boton vaciar carrito
         tk.Button(
             resumen, text="VACIAR CARRITO", font=FUENTE_BOTON,
             bg=GRAY_BTN, fg=WHITE, activebackground="#ff4d4d",
             relief="flat", bd=0, cursor="hand2", command=self.vacia_todo
-        ).pack(fill="x", ipady=8, pady=(10,0))
+        ).pack(fill="x", ipady=8, pady=(6,0))
 
     def _mostrar_mensaje(self, msg, tipo="error"):
         self.lbl_mensaje.config(text=msg)
@@ -299,28 +324,32 @@ class carrito(tk.Frame):
             self.actualizar_carrito(self.lista_actual)
 
     def _actualizar_totales(self):
+        modalidad = "domicilio" if self.combo_modalidad.get() == "Despacho a domicilio" else "retiro"
+        self.despacho_actual = Despacho(modalidad, self.combo_region.get(),self.usuario_actual or "")
         if not self.lista_actual:
             self.subtotal_actual = 0.0
+            self.envio_actual=0.0
             self.iva_actual = 0.0
             self.total_actual = 0.0
         else:  
             subtotal = 0.0 
-            lineas_desglose = []
+            
             for item in self.lista_actual: 
                 prod = item["producto"]
                 cant = item["cantidad"]
-                precio = float(prod.precio)
-                total_item = precio*cant
-                subtotal += total_item 
+                subtotal += float(prod.precio) * cant
             self.subtotal_actual = subtotal
-            self.iva_actual = self.subtotal_actual * 0.19
-            self.total_actual = self.subtotal_actual + self.iva_actual
+            self.envio_actual = self.despacho_actual.calcular(subtotal)
+            self.iva_actual = (self.subtotal_actual + self.envio_actual) * 0.19
+            self.total_actual = self.subtotal_actual + self.iva_actual+ self.envio_actual
         # Formato numérico estándar chileno
         sub_str = f"{self.subtotal_actual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        envio_str = f"{self.envio_actual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         iva_str = f"{self.iva_actual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         tot_str = f"{self.total_actual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
         self.lbl_subtotal.config(text=f"${sub_str}")
+        self.lbl_envio.config(text=f"${envio_str}")
         self.lbl_iva.config(text=f"${iva_str}")
         self.lbl_total.config(text=f"${tot_str}")
 
@@ -412,7 +441,7 @@ class carrito(tk.Frame):
     def _generar_comprobante(self):
         modal = tk.Toplevel(self)
         modal.title("Comprobante de Venta")
-        modal.geometry("450x520")
+        modal.geometry("450x560")
         modal.configure(bg=DARK_CARD)
         modal.resizable(False, False)
         modal.transient(self)
@@ -425,6 +454,14 @@ class carrito(tk.Frame):
             tk.Label(modal, text=f"RUN: {self._run_ingresado()}", font=FUENTE_BODY, bg=DARK_CARD, fg=GRAY_TEXT).pack(pady=(0, 10))
         else:
             tk.Label(modal, text="RUN: —", font=FUENTE_BODY, bg=DARK_CARD, fg=GRAY_TEXT).pack(pady=(0, 10))
+
+        if self.despacho_actual.modalidad == "domicilio":
+            entrega=f"Despacho a ({self.despacho_actual.region})"
+            if self.despacho_actual.receptor:
+                entrega+=f" - Recibe: {self.despacho_actual.receptor}"
+        else:
+            entrega="Retiro en tienda"
+        tk.Label(modal, text=f"Entrega: {entrega}", font=FUENTE_BODY, bg=DARK_CARD, fg=WHITE).pack(pady=(0, 10))
 
         tk.Frame(modal, bg=GRAY_BTN, height=1).pack(fill="x", padx=20, pady=5)
 
@@ -449,6 +486,7 @@ class carrito(tk.Frame):
         frame_totales.pack(fill="x", padx=25, pady=5)
 
         sub_str = f"{self.subtotal_actual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        envio_str = f"{self.envio_actual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         iva_str = f"{self.iva_actual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         tot_str = f"{self.total_actual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
@@ -459,6 +497,7 @@ class carrito(tk.Frame):
             tk.Label(f, text=valor, font=FUENTE_BODY, bg=DARK_CARD, fg=color).pack(side="right")
 
         add_linea("Subtotal:", f"${sub_str}")
+        add_linea("Envío:", f"${envio_str}")
         add_linea("IVA (19%):", f"${iva_str}")
         add_linea("TOTAL PAGADO:", f"${tot_str}", color=GREEN)
 
@@ -478,10 +517,14 @@ class carrito(tk.Frame):
             # no duplicar la venta con otro formato.
 
             if self.on_pagar_confirmado is not None:
+                despacho = self.despacho_actual.to_dict()
                 try:
-                    ok = self.on_pagar_confirmado(run_cliente)
+                    ok = self.on_pagar_confirmado(run_cliente,despacho)
                 except TypeError:
-                    ok = self.on_pagar_confirmado()
+                    try:
+                        ok = self.on_pagar_confirmado(run_cliente)
+                    except TypeError:
+                        ok = self.on_pagar_confirmado()
                 if ok:
                     self.lista_actual = []
                     self.actualizar_carrito([])
@@ -514,6 +557,11 @@ class carrito(tk.Frame):
             return
 
         self._limpiar_mensaje()
+        modalidad = "domicilio" if self.combo_modalidad.get() == "Despacho a domicilio" else "retiro"
+        if modalidad == "domicilio" and self.combo_region.get() not in Despacho.REGIONES:
+            self._mostrar_mensaje("Selecciona una región válida para el despacho", tipo="error")
+            return
+        self.actualizar_totales()  # Asegura que los totales estén actualizados antes de generar el comprobante
         self._generar_comprobante()
 
 

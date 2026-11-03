@@ -39,6 +39,7 @@ try:
     from modelos.usuario import GestorUsuarios
     from modelos.inventario import Inventario
     from modelos.producto import Producto
+    from modelos.despacho import Despacho
     try:
         from persistencia.gestor_persistencia import (
             RUTA_VENTAS_JSON,
@@ -62,6 +63,7 @@ except ImportError:  # fallback cuando se ejecuta con cwd=vistas/
     from modelos.usuario import GestorUsuarios
     from modelos.inventario import Inventario
     from modelos.producto import Producto
+    from modelos.despacho import Despacho
     try:
         from persistencia.gestor_persistencia import (
             RUTA_VENTAS_JSON,
@@ -412,7 +414,7 @@ class RetroVaultApp:
         self._notificar_carrito()
         return self.carrito
 
-    def _registrar_venta(self, run=None):
+    def _registrar_venta(self, run=None, despacho=None):
         """Guarda la venta en data/ventas.json para que el ADMIN la consuma."""
         if RUTA_VENTAS_JSON is None or cargar_json is None:
             return None
@@ -431,8 +433,10 @@ class RetroVaultApp:
             for el in self.carrito
         ]
         subtotal=sum(float(i["precio"]) * i["cantidad"] for i in items)
-        iva=subtotal*0.19
-        total=subtotal+iva
+        despacho_obj=Despacho.from_dict(despacho)
+        envio = despacho_obj.calcular(subtotal)
+        iva=(subtotal+envio)*0.19
+        total=subtotal+iva+envio
         ventas = cargar_json(str(RUTA_VENTAS_JSON), default=[]) or []
         id_venta = self._siguiente_id_venta(ventas)
         ventas.append(
@@ -443,6 +447,8 @@ class RetroVaultApp:
                 "fecha": fecha,
                 "items": items,
                 "subtotal": subtotal,
+                "envio": envio,
+                "despacho": despacho_obj.to_dict(),
                 "iva": iva,
                 "total": total,
             }
@@ -450,7 +456,7 @@ class RetroVaultApp:
         guardar_json(str(RUTA_VENTAS_JSON), ventas)
         return id_venta
 
-    def _confirmar_pago(self, run=None):
+    def _confirmar_pago(self, run=None, despacho=None):
         """Confirma la venta: la registra y vacía SIN devolver stock."""
         if not self.carrito:
             return False
@@ -458,12 +464,15 @@ class RetroVaultApp:
             # Con sockets el SERVER es quien cobra y descuenta. Le pedimos
             # confirmar y esperamos su respuesta; si el stock no alcanzan nos
             # va a corregir el carrito con T_CARRITO_ESTADO.
+            if isinstance(despacho, dict) and despacho.get("modalidad")=="despacho":
+                _toast(self.root, "El pago con despacho se procesa en el servidor", tipo="info")
+                return False
             try:
                 self.conexion.pagar(run)
             except TypeError:
                 self.conexion.pagar()
             return True
-        id_venta = self._registrar_venta(run)
+        id_venta = self._registrar_venta(run, despacho)
         self.carrito.clear()
         return True
     # navegacion entre las 6 pantallas
