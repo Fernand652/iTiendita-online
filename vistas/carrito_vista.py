@@ -176,9 +176,9 @@ class carrito(tk.Frame):
         self.lbl_total = tk.Label(fila_total, text="$0,00", font=FUENTE_HERO, bg=DARK_CARD, fg=GREEN)
         self.lbl_total.pack(side="right")
 
-        tk.frame(resumen, bg=GRAY_BTN, height=1).pack(fill="x", pady=(4, 4))
+        tk.Frame(resumen, bg=GRAY_BTN, height=1).pack(fill="x", pady=(4, 4))
         tk.Label(resumen, text="ENTREGA", font=FUENTE_CATEGORIA, bg=DARK_CARD, fg=GRAY_TEXT).pack(anchor="w", pady=(0, 4))
-        self.combo_modalidad=ttk.Combobox(resumen, font=FUENTE_BODY, state="readonly", values=["Retiro en tienda", "Despacho a domicilio"])
+        self.combo_modalidad=ttk.Combobox(resumen, values=["Retiro en tienda", "Despacho a domicilio"], state="readonly",font=FUENTE_BODY)
         self.combo_modalidad.set("Retiro en tienda")
         self.combo_modalidad.pack(fill="x", pady=(0, 4))
         self.combo_modalidad.bind("<<ComboboxSelected>>", lambda e: self._actualizar_totales())

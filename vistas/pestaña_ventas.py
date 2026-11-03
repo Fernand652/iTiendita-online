@@ -271,6 +271,20 @@ class PestanaVentas(tk.Frame):
                 total = float(v.get("total", 0) or 0)
             except (TypeError, ValueError):
                 total = 0.0
+
+            try:
+                envio = float(v.get("envio", 0) or 0)
+            except (TypeError, ValueError):
+                envio = 0.0
+            despacho=v.get("despacho") or {}
+            if not isinstance(despacho, dict):
+                despacho = {}
+            if despacho.get("modalidad") == "domicilio":
+                entrega=f"Despacho a {despacho.get('region','') or '-'}"
+                if despacho.get("receptor"):
+                    entrega+=f" | recibe: {despacho.get('receptor')}"
+            else:
+                entrega="Retiro en tienda"
             if not subtotal and total:
                 subtotal = total / 1.19
             if not iva and total:
@@ -280,6 +294,7 @@ class PestanaVentas(tk.Frame):
                 f"Fecha: {v.get('fecha', 'Sin fecha')}",
                 f"Cliente: {_cliente_de(v)}",
                 f"RUT: {_run_de(v) or '— (sin RUT)'}",
+                f"Entrega: {entrega}",
                 "",
                 "Productos:",
             ]
@@ -298,6 +313,7 @@ class PestanaVentas(tk.Frame):
                     sub = 0.0
                 lineas.append(f"  - {nom} x{cant}  {_fmt_clp(sub)}")
             lineas += ["", f"Subtotal: {_fmt_clp(subtotal)}",
+                       f"Envío: {_fmt_clp(envio)}",
                        f"IVA (19%): {_fmt_clp(iva)}",
                        f"TOTAL: {_fmt_clp(total)}"]
             self.txt_detalle.insert(tk.END, "\n".join(lineas))
