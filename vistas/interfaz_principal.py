@@ -148,7 +148,7 @@ class PantallaPrincipal(tk.Frame):
                            hace click en "Añadir al Carro".
     """
 
-    def __init__(self, parent, inventario=None, on_agregar_carro=None, on_ir_admin=None, on_ver_carrito=None, on_ir_explorar=None, usuario_actual=None, es_admin=False, on_cerrar_sesion=None, on_ir_login=None):
+    def __init__(self, parent, inventario=None, on_agregar_carro=None, on_ir_admin=None, on_ver_carrito=None, on_ir_explorar=None, on_ir_chat=None, usuario_actual=None, es_admin=False, on_cerrar_sesion=None, on_ir_login=None):
         super().__init__(parent, bg=BG_DARK)
         # Acepta tanto lista de productos como instancia de Inventario
         if inventario is None:
@@ -161,6 +161,7 @@ class PantallaPrincipal(tk.Frame):
         self.on_ir_admin = on_ir_admin
         self.on_ver_carrito = on_ver_carrito
         self.on_ir_explorar = on_ir_explorar
+        self.on_ir_chat = on_ir_chat
         self.usuario_actual = usuario_actual
         self.es_admin = bool(es_admin)
         self.on_cerrar_sesion = on_cerrar_sesion
@@ -233,6 +234,13 @@ class PantallaPrincipal(tk.Frame):
         iconos = tk.Frame(navbar, bg=BG_DARK)
         iconos.pack(side="right")
 
+        lbl_chat = tk.Label(
+            iconos, text="🤖 ASISTENTE", font=FUENTE_NAV,
+            bg=GREEN, fg=BLACK, padx=10, pady=6, cursor="hand2"
+        )
+        lbl_chat.pack(side="left", padx=4)
+        lbl_chat.bind("<Button-1>", lambda e: self._abrir_chat())
+
         lbl_carrito = tk.Label(
             iconos, text="🛒", font=("Arial", 13), bg=GRAY_BTN, fg=WHITE,
             padx=12, pady=6, cursor="hand2"
@@ -293,6 +301,12 @@ class PantallaPrincipal(tk.Frame):
             self.on_ver_carrito()
         else:
             self._mostrar_estado("Carrito no disponible en vista aislada", es_error=True)
+
+    def _abrir_chat(self):
+        if self.on_ir_chat:
+            self.on_ir_chat()
+        else:
+            self._mostrar_estado("Asistente no disponible en vista aislada", es_error=True)
 
     def _mostrar_estado(self, msg, es_error=False):
         """Avisos/errores EN PANTALLA (label catálogo + toast flotante)."""

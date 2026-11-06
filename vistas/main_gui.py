@@ -33,6 +33,7 @@ try:
     from vistas.interfaz_crear_cuenta import PantallaCrearCuenta
     from vistas.interfaz_principal import PantallaPrincipal
     from vistas.interfaz_explorar import PantallaExplorar
+    from vistas.chat_vista import PantallaChat
     from vistas.interfaz_admin import PantallaAdmin
     from vistas.carrito_vista import carrito as PantallaCarrito
     from vistas.toast import mostrar_toast
@@ -54,6 +55,7 @@ except ImportError:  # fallback cuando se ejecuta con cwd=vistas/
     from interfaz_crear_cuenta import PantallaCrearCuenta
     from interfaz_principal import PantallaPrincipal
     from interfaz_explorar import PantallaExplorar
+    from chat_vista import PantallaChat
     from interfaz_admin import PantallaAdmin
     from carrito_vista import carrito as PantallaCarrito
     try:
@@ -530,6 +532,7 @@ class RetroVaultApp:
             on_agregar_carro=self._agregar_al_carrito,
             on_ver_carrito=self.mostrar_carrito,
             on_ir_explorar=self.mostrar_explorar,
+            on_ir_chat=self.mostrar_chat,
             usuario_actual=self.usuario_actual,
             es_admin=self._es_admin(),
             on_cerrar_sesion=self.cerrar_sesion,
@@ -547,6 +550,18 @@ class RetroVaultApp:
             on_agregar_carro=self._agregar_al_carrito,
             filtro_inicial=filtro_inicial,
             on_ver_carrito=self.mostrar_carrito,
+            usuario_actual=self.usuario_actual,
+            on_cerrar_sesion=self.cerrar_sesion,
+            on_ir_login=lambda: self._ir_a_login_preservando_carrito(destino="principal"),
+        )
+        pantalla.pack(fill="both", expand=True)
+
+    def mostrar_chat(self):
+        self._limpiar_contenedor()
+        pantalla = PantallaChat(
+            self.contenedor,
+            inventario=self.inventario,
+            on_volver=self.mostrar_principal,
             usuario_actual=self.usuario_actual,
             on_cerrar_sesion=self.cerrar_sesion,
             on_ir_login=lambda: self._ir_a_login_preservando_carrito(destino="principal"),
