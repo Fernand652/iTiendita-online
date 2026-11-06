@@ -77,6 +77,11 @@ except ImportError:  # ejecución directa dentro de red/
         RUTA_VENTAS_JSON, cargar_json, guardar_json,
     )
 
+try:
+    from modelos.despacho import Despacho
+except ImportError:  # ejecución directa dentro de red/
+    from despacho import Despacho
+
 # Cada cuánto revisamos el accept() para ver si hay que apagar el servidor.
 TIMEOUT_ACCEPT = 0.5
 
@@ -423,9 +428,11 @@ class ServidorCarritos(threading.Thread):
 
     def _procesar_pago(self, conexion, usuario, mensaje=None):
         """
-        Confirma la compra: se registra la venta en data/ventas.json y el
-        carrito se limpia SIN devolver el stock (ya se cobró).
+        Confirma la compra: se registra la venta en data/ventas.json (con
+        envío, despacho e IVA) y el carrito se limpia SIN devolver el stock
+        (ya se cobró).
         """
+        despacho = Despacho.from_dict((mensaje or {}).get("despacho"))
         with self._lock:
             items = dict(self.carritos.get(usuario, {}))
             if not items:
@@ -433,21 +440,26 @@ class ServidorCarritos(threading.Thread):
                                         "mensaje": "Tu carrito está vacío"})
                 return
 
-            detalle, total = [], 0.0
+            detalle, subtotal = [], 0.0
             for id_producto, cantidad in sorted(items.items()):
                 producto = self.inventario.buscar_por_id(id_producto)
                 if producto is None:
                     continue
-                subtotal = float(producto.precio) * cantidad
-                total += subtotal
+                subtotal_item = float(producto.precio) * cantidad
+                subtotal += subtotal_item
                 detalle.append({"id": producto.id, "nombre": producto.nombre,
                                 "precio": producto.precio, "cantidad": cantidad,
-                                "subtotal": subtotal})
+                                "subtotal": subtotal_item})
 
-            self._guardar_venta(usuario, detalle, total, run=(mensaje or {}).get("run", ""))
+            envio = despacho.calcular(subtotal)
+            iva = (subtotal + envio) * 0.19
+            total = subtotal + iva + envio
+            self._guardar_venta(usuario, detalle, subtotal, envio, despacho,
+                                run=(mensaje or {}).get("run", ""))
             self.carritos.pop(usuario, None)
 
-        self._enviar(conexion, {"type": T_PAGO_OK, "total": total})
+        self._enviar(conexion, {"type": T_PAGO_OK, "total": total,
+                                "subtotal": subtotal, "envio": envio, "iva": iva})
         self._enviar(conexion, {"type": T_CARRITO_ESTADO, "items": []})
         self._difundir_carritos()
 
@@ -463,7 +475,7 @@ class ServidorCarritos(threading.Thread):
                 max_id = vid
         return max_id + 1
 
-    def _guardar_venta(self, usuario, detalle, total, run=None):
+    def _guardar_venta(self, usuario, detalle, subtotal, envio, despacho, run=None):
         """Escribe la venta en data/ventas.json (la usa el panel del ADMIN)."""
         try:
             from datetime import datetime
@@ -471,13 +483,25 @@ class ServidorCarritos(threading.Thread):
         except Exception:
             fecha = ""
         try:
-            subtotal = float(total)
-            iva = subtotal * 0.19
-            total_final = subtotal + iva
+            subtotal = float(subtotal)
+            envio = float(envio or 0)
+            iva = (subtotal + envio) * 0.19
+            total_final = subtotal + iva + envio
             ventas = cargar_json(str(RUTA_VENTAS_JSON), default=[]) or []
             id_venta = self._siguiente_id_venta(ventas)
-            ventas.append({"id_venta": id_venta, "cliente": usuario, "run": (run or "").strip(), "fecha": fecha,
-                           "items": detalle, "subtotal": subtotal, "iva": iva, "total": total_final})
+            despacho_dict = despacho.to_dict() if despacho is not None else Despacho().to_dict()
+            ventas.append({
+                "id_venta": id_venta,
+                "cliente": usuario,
+                "run": (run or "").strip(),
+                "fecha": fecha,
+                "items": detalle,
+                "subtotal": subtotal,
+                "envio": envio,
+                "despacho": despacho_dict,
+                "iva": iva,
+                "total": total_final,
+            })
             guardar_json(str(RUTA_VENTAS_JSON), ventas)
             return id_venta
         except Exception:

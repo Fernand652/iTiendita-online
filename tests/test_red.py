@@ -12,6 +12,7 @@ Para correr:
     python -m unittest tests.test_red -v
 """
 
+import json
 import os
 import shutil
 import socket
@@ -32,6 +33,7 @@ from red.protocolo import (
     T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK,
     T_CARRITOS, T_ERROR,
 )
+from red import servidor as servidor_mod
 from red.servidor import ServidorCarritos
 
 
@@ -229,7 +231,13 @@ class TestServidorCarritos(unittest.TestCase):
         self._esperar_arranque()
         self.clientes = []
 
+        # Las ventas de las pruebas no deben contaminar data/ventas.json real.
+        self.ruta_ventas = os.path.join(self.tempdir, "ventas.json")
+        self._ruta_ventas_original = servidor_mod.RUTA_VENTAS_JSON
+        servidor_mod.RUTA_VENTAS_JSON = self.ruta_ventas
+
     def tearDown(self):
+        servidor_mod.RUTA_VENTAS_JSON = self._ruta_ventas_original
         for cliente in self.clientes:
             cliente.cerrar()
         self.servidor.detener()
@@ -381,17 +389,53 @@ class TestServidorCarritos(unittest.TestCase):
             time.sleep(0.05)
         self.fail("El admin nunca recibió el carrito de ana")
 
+    def _leer_ventas(self):
+        with open(self.ruta_ventas, "r", encoding="utf-8") as f:
+            return json.load(f)
+
     def test_pagar_registra_la_venta_y_limpia_el_carrito(self):
         cliente = self._cliente("ana")
         cliente.mandar_carrito("ana", [{"id": 1, "cantidad": 2}])
         self._esperar_stock(1, 1)
         cliente.enviar({"type": T_PAGO, "usuario": "ana"})
         ok = cliente.esperar(T_PAGO_OK)
-        # 2 x 1000
-        self.assertEqual(ok["total"], 2000)
+        # 2 x 1000 + IVA 19% (retiro, sin envío)
+        self.assertAlmostEqual(ok["total"], 2380.0)
+        self.assertAlmostEqual(ok["envio"], 0.0)
         # El pago NO devuelve el stock: ya se cobró.
         self._esperar_stock(1, 1)
         self.assertNotIn("ana", self.servidor.carritos)
+        ventas = self._leer_ventas()
+        self.assertEqual(len(ventas), 1)
+        self.assertEqual(ventas[0]["despacho"]["modalidad"], "retiro")
+        self.assertAlmostEqual(ventas[0]["total"], 2380.0)
+
+    def test_pagar_con_despacho_incluye_envio_y_guarda_datos(self):
+        cliente = self._cliente("ana")
+        cliente.mandar_carrito("ana", [{"id": 1, "cantidad": 2}])
+        self._esperar_stock(1, 1)
+        despacho = {
+            "modalidad": "domicilio",
+            "region": "Maule",
+            "receptor": "ana",
+            "direccion": "Av. Siempre Viva 742",
+            "comuna": "Talca",
+        }
+        cliente.enviar({"type": T_PAGO, "usuario": "ana", "despacho": despacho})
+        ok = cliente.esperar(T_PAGO_OK)
+        # 2000 productos + 4990 envío Maule + 19% de 6990
+        self.assertAlmostEqual(ok["subtotal"], 2000.0)
+        self.assertAlmostEqual(ok["envio"], 4990.0)
+        self.assertAlmostEqual(ok["iva"], 1328.1)
+        self.assertAlmostEqual(ok["total"], 8318.1)
+        self._esperar_stock(1, 1)
+        ventas = self._leer_ventas()
+        self.assertEqual(len(ventas), 1)
+        self.assertEqual(ventas[0]["despacho"]["modalidad"], "domicilio")
+        self.assertEqual(ventas[0]["despacho"]["comuna"], "Talca")
+        self.assertEqual(ventas[0]["despacho"]["direccion"], "Av. Siempre Viva 742")
+        self.assertAlmostEqual(ventas[0]["envio"], 4990.0)
+        self.assertAlmostEqual(ventas[0]["total"], 8318.1)
 
     def test_pagar_sin_carrito_avisa_error(self):
         cliente = self._cliente("ana")

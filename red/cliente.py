@@ -135,11 +135,13 @@ class ConexionServidor(threading.Thread):
         """Pide vaciar el carrito entero."""
         return self.enviar({"type": T_VACIAR, "usuario": self.usuario})
 
-    def pagar(self, run=None):
-        """Confirma la compra de lo que hay en el carrito (RUN opcional)."""
+    def pagar(self, run=None, despacho=None):
+        """Confirma la compra de lo que hay en el carrito (RUN y despacho opcionales)."""
         mensaje = {"type": T_PAGO, "usuario": self.usuario}
         if (run or "").strip():
             mensaje["run"] = (run or "").strip()
+        if isinstance(despacho, dict):
+            mensaje["despacho"] = despacho
         return self.enviar(mensaje)
 
     # ------------------------------------------------------------------

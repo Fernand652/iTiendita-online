@@ -280,11 +280,21 @@ class PestanaVentas(tk.Frame):
             if not isinstance(despacho, dict):
                 despacho = {}
             if despacho.get("modalidad") == "domicilio":
-                entrega=f"Despacho a {despacho.get('region','') or '-'}"
+                entrega = f"Despacho a {despacho.get('region', '') or '-'}"
+                if despacho.get("comuna"):
+                    entrega += f" | comuna: {despacho.get('comuna')}"
+                if despacho.get("direccion"):
+                    entrega += f" | dirección: {despacho.get('direccion')}"
                 if despacho.get("receptor"):
-                    entrega+=f" | recibe: {despacho.get('receptor')}"
+                    entrega += f" | recibe: {despacho.get('receptor')}"
+                try:
+                    dias = int(despacho.get("dias_entrega"))
+                except (TypeError, ValueError):
+                    dias = None
+                if dias:
+                    entrega += f" ({dias} días)"
             else:
-                entrega="Retiro en tienda"
+                entrega = "Retiro en tienda"
             if not subtotal and total:
                 subtotal = total / 1.19
             if not iva and total:

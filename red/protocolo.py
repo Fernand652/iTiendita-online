@@ -61,7 +61,8 @@ T_VACIAR = "vaciar"
 
 T_PAGO = "pago"
 # "Confirmo la compra de lo que tengo en el carrito"
-# {type, usuario}
+# {type, usuario, run?: str,
+#  despacho?: {modalidad, region, receptor, direccion, comuna}}
 
 # --- Los que manda el SERVIDOR ---
 T_INVENTARIO = "inventario"

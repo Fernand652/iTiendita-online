@@ -463,16 +463,15 @@ class RetroVaultApp:
         if not self.carrito:
             return False
         if self.conexion is not None and self.conexion.conectado:
-            # Con sockets el SERVER es quien cobra y descuenta. Le pedimos
-            # confirmar y esperamos su respuesta; si el stock no alcanzan nos
-            # va a corregir el carrito con T_CARRITO_ESTADO.
-            if isinstance(despacho, dict) and despacho.get("modalidad")=="despacho":
-                _toast(self.root, "El pago con despacho se procesa en el servidor", tipo="info")
-                return False
+            # Con sockets el SERVER es quien cobra y descuenta. El despacho
+            # viaja en el mismo mensaje para que la venta quede completa.
             try:
-                self.conexion.pagar(run)
+                self.conexion.pagar(run, despacho)
             except TypeError:
-                self.conexion.pagar()
+                try:
+                    self.conexion.pagar(run)
+                except TypeError:
+                    self.conexion.pagar()
             return True
         id_venta = self._registrar_venta(run, despacho)
         self.carrito.clear()

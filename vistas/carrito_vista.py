@@ -206,17 +206,25 @@ class carrito(tk.Frame):
         self.combo_modalidad=ttk.Combobox(resumen, values=["Retiro en tienda", "Despacho a domicilio"], state="readonly",font=FUENTE_BODY)
         self.combo_modalidad.set("Retiro en tienda")
         self.combo_modalidad.pack(fill="x", pady=(0, 4))
-        self.combo_modalidad.bind("<<ComboboxSelected>>", lambda e: self._actualizar_totales())
+        self.combo_modalidad.bind("<<ComboboxSelected>>", lambda e: self._cambio_modalidad())
         self.combo_region= ttk.Combobox(resumen,values=Despacho.REGIONES, state="readonly", font=FUENTE_BODY)
         self.combo_region.set(Despacho.REGION_TIENDA)
         self.combo_region.pack(fill="x", pady=(0, 4))
         self.combo_region.bind("<<ComboboxSelected>>", lambda e: self._actualizar_totales())
 
+        # Dirección y comuna solo se muestran cuando se elige despacho a domicilio.
+        self.frame_despacho = tk.Frame(resumen, bg=DARK_CARD)
+        tk.Label(self.frame_despacho, text="DIRECCIÓN", font=FUENTE_CATEGORIA, bg=DARK_CARD, fg=GRAY_TEXT).pack(anchor="w", pady=(0, 2))
+        self.entry_direccion = tk.Entry(self.frame_despacho, font=FUENTE_BODY, bg=BG_DARK, fg=WHITE, insertbackground=WHITE, relief="flat")
+        self.entry_direccion.pack(fill="x", ipady=5, pady=(0, 4))
+        tk.Label(self.frame_despacho, text="COMUNA", font=FUENTE_CATEGORIA, bg=DARK_CARD, fg=GRAY_TEXT).pack(anchor="w", pady=(0, 2))
+        self.entry_comuna = tk.Entry(self.frame_despacho, font=FUENTE_BODY, bg=BG_DARK, fg=WHITE, insertbackground=WHITE, relief="flat")
+        self.entry_comuna.pack(fill="x", ipady=5)
 
-
-
-        tk.Label(resumen, text="RUN CLIENTE (OPCIONAL):", font=FUENTE_CATEGORIA, bg=DARK_CARD, fg=GRAY_TEXT).pack(anchor="w", pady=(0, 4))
-        self.entry_run = tk.Entry(resumen, font=FUENTE_BODY, bg=BG_DARK, fg=WHITE, insertbackground=WHITE, relief="flat")
+        self.frame_run = tk.Frame(resumen, bg=DARK_CARD)
+        self.frame_run.pack(fill="x")
+        tk.Label(self.frame_run, text="RUN CLIENTE (OPCIONAL):", font=FUENTE_CATEGORIA, bg=DARK_CARD, fg=GRAY_TEXT).pack(anchor="w", pady=(0, 4))
+        self.entry_run = tk.Entry(self.frame_run, font=FUENTE_BODY, bg=BG_DARK, fg=WHITE, insertbackground=WHITE, relief="flat")
         self.entry_run.pack(fill="x", ipady=6, pady=(0, 8))
 
         # Botón Pagar / Confirmar venta
@@ -360,9 +368,26 @@ class carrito(tk.Frame):
             self.lista_actual.remove(elemento)
             self.actualizar_carrito(self.lista_actual)
 
+    def _cambio_modalidad(self):
+        self._actualizar_campos_despacho()
+        self._actualizar_totales()
+
+    def _actualizar_campos_despacho(self):
+        if self.combo_modalidad.get() == "Despacho a domicilio":
+            if not self.frame_despacho.winfo_ismapped():
+                self.frame_despacho.pack(fill="x", pady=(0, 4), before=self.frame_run)
+        else:
+            self.frame_despacho.pack_forget()
+
     def _actualizar_totales(self):
         modalidad = "domicilio" if self.combo_modalidad.get() == "Despacho a domicilio" else "retiro"
-        self.despacho_actual = Despacho(modalidad, self.combo_region.get(),self.usuario_actual or "")
+        self.despacho_actual = Despacho(
+            modalidad,
+            self.combo_region.get(),
+            self.usuario_actual or "",
+            self.entry_direccion.get(),
+            self.entry_comuna.get(),
+        )
         if not self.lista_actual:
             self.subtotal_actual = 0.0
             self.descuento_actual = 0.0
@@ -484,7 +509,7 @@ class carrito(tk.Frame):
     def _generar_comprobante(self):
         modal = tk.Toplevel(self)
         modal.title("Comprobante de Venta")
-        modal.geometry("450x560")
+        modal.geometry("480x640")
         modal.configure(bg=DARK_CARD)
         modal.resizable(False, False)
         modal.transient(self)
@@ -499,18 +524,41 @@ class carrito(tk.Frame):
             tk.Label(modal, text="RUN: —", font=FUENTE_BODY, bg=DARK_CARD, fg=GRAY_TEXT).pack(pady=(0, 10))
 
         if self.despacho_actual.modalidad == "domicilio":
-            entrega=f"Despacho a ({self.despacho_actual.region})"
+            entrega = f"Despacho a {self.despacho_actual.region}"
+            if self.despacho_actual.comuna:
+                entrega += f" | Comuna: {self.despacho_actual.comuna}"
+            if self.despacho_actual.direccion:
+                entrega += f"\nDirección: {self.despacho_actual.direccion}"
             if self.despacho_actual.receptor:
-                entrega+=f" - Recibe: {self.despacho_actual.receptor}"
+                entrega += f" | Recibe: {self.despacho_actual.receptor}"
+            entrega += f"\nEntrega estimada: {self.despacho_actual.dias_entrega()} días hábiles"
         else:
-            entrega="Retiro en tienda"
-        tk.Label(modal, text=f"Entrega: {entrega}", font=FUENTE_BODY, bg=DARK_CARD, fg=WHITE).pack(pady=(0, 10))
+            entrega = "Retiro en tienda"
+        tk.Label(
+            modal, text=f"Entrega: {entrega}", font=FUENTE_BODY,
+            bg=DARK_CARD, fg=WHITE, wraplength=420, justify="left"
+        ).pack(pady=(0, 10))
 
         tk.Frame(modal, bg=GRAY_BTN, height=1).pack(fill="x", padx=20, pady=5)
 
-        # Detalle de artículos comprados
-        frame_items = tk.Frame(modal, bg=DARK_CARD)
-        frame_items.pack(fill="both", expand=True, padx=25, pady=10)
+        # Detalle de artículos comprados (con scroll si son muchos)
+        contenedor_items = tk.Frame(modal, bg=DARK_CARD)
+        contenedor_items.pack(fill="both", expand=True, padx=25, pady=10)
+        canvas_items = tk.Canvas(contenedor_items, bg=DARK_CARD, highlightthickness=0)
+        scroll_items = tk.Scrollbar(contenedor_items, orient="vertical", command=canvas_items.yview)
+        frame_items = tk.Frame(canvas_items, bg=DARK_CARD)
+        frame_items.bind(
+            "<Configure>",
+            lambda e: canvas_items.configure(scrollregion=canvas_items.bbox("all")),
+        )
+        ventana_items = canvas_items.create_window((0, 0), window=frame_items, anchor="nw")
+        canvas_items.bind(
+            "<Configure>",
+            lambda e: canvas_items.itemconfigure(ventana_items, width=e.width),
+        )
+        canvas_items.configure(yscrollcommand=scroll_items.set)
+        canvas_items.pack(side="left", fill="both", expand=True)
+        scroll_items.pack(side="right", fill="y")
 
         for el in self.lista_actual:
             p = el["producto"]
@@ -544,14 +592,20 @@ class carrito(tk.Frame):
         add_linea("IVA (19%):", f"${iva_str}")
         add_linea("TOTAL PAGADO:", f"${tot_str}", color=GREEN)
 
-        def confirmar():
-            modal.destroy()
+        lbl_error_modal = tk.Label(
+            modal, text="", font=FUENTE_BODY, bg=DARK_CARD, fg="#ff6b6b",
+            wraplength=420, justify="left"
+        )
+        lbl_error_modal.pack(fill="x", padx=30)
 
+        def confirmar():
             # Distinción con/sin RUT: vacío = boleta sin RUT (se guarda ""),
             # válido = venta con RUT normalizado. No se reemplaza por el usuario.
             run_raw = self._run_ingresado()
             if run_raw and not self._validar_run(run_raw):
-                self._mostrar_mensaje("RUT inválido (ej: 12.345.678-5). Déjalo vacío si no tienes.", tipo="error")
+                lbl_error_modal.config(
+                    text="RUT inválido (ej: 12.345.678-5). Déjalo vacío si no tienes."
+                )
                 return
             run_cliente = self._normalizar_run(run_raw)
 
@@ -562,26 +616,35 @@ class carrito(tk.Frame):
             if self.on_pagar_confirmado is not None:
                 despacho = self.despacho_actual.to_dict()
                 try:
-                    ok = self.on_pagar_confirmado(run_cliente,despacho)
+                    ok = self.on_pagar_confirmado(run_cliente, despacho)
                 except TypeError:
                     try:
                         ok = self.on_pagar_confirmado(run_cliente)
                     except TypeError:
                         ok = self.on_pagar_confirmado()
-                if ok:
-                    self.lista_actual = []
-                    self.actualizar_carrito([])
-                    self._mostrar_mensaje("Venta registrada para el ADMIN", tipo="exito")
+                if not ok:
+                    lbl_error_modal.config(
+                        text="No se pudo registrar la venta. Intenta nuevamente."
+                    )
+                    return
+                modal.destroy()
+                self.lista_actual = []
+                self.actualizar_carrito([])
+                self._mostrar_mensaje("Venta registrada para el ADMIN", tipo="exito")
                 return
 
             if self.on_pagar:
+                modal.destroy()
                 self.on_pagar()
-                
+                return
+            modal.destroy()
+
         tk.Button(
-            modal, text="ACEPTAR", font=FUENTE_BOTON,
+            modal, text="ACEPTAR", font=FUENTE_BOTON_GRANDE,
             bg=GREEN, fg=BLACK, activebackground=GREEN_HOVER,
-            relief="flat", bd=0, cursor="hand2", command=confirmar
-        ).pack(fill="x", padx=30, pady=20, ipady=8)
+            activeforeground=BLACK, relief="flat", bd=0,
+            highlightthickness=0, cursor="hand2", command=confirmar
+        ).pack(fill="x", padx=30, pady=(12, 20), ipady=12)
 
     def pagar(self):
         if not self.lista_actual:
@@ -601,10 +664,17 @@ class carrito(tk.Frame):
 
         self._limpiar_mensaje()
         modalidad = "domicilio" if self.combo_modalidad.get() == "Despacho a domicilio" else "retiro"
-        if modalidad == "domicilio" and self.combo_region.get() not in Despacho.REGIONES:
-            self._mostrar_mensaje("Selecciona una región válida para el despacho", tipo="error")
-            return
-        self.actualizar_totales()  # Asegura que los totales estén actualizados antes de generar el comprobante
+        if modalidad == "domicilio":
+            if self.combo_region.get() not in Despacho.REGIONES:
+                self._mostrar_mensaje("Selecciona una región válida para el despacho", tipo="error")
+                return
+            if not self.entry_direccion.get().strip():
+                self._mostrar_mensaje("Ingresa una dirección para el despacho", tipo="error")
+                return
+            if not self.entry_comuna.get().strip():
+                self._mostrar_mensaje("Ingresa una comuna para el despacho", tipo="error")
+                return
+        self._actualizar_totales()  # Asegura totales y despacho antes del comprobante
         self._generar_comprobante()
 
 
