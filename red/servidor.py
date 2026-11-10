@@ -433,6 +433,10 @@ class ServidorCarritos(threading.Thread):
         (ya se cobró).
         """
         despacho = Despacho.from_dict((mensaje or {}).get("despacho"))
+        valido, motivo = despacho.validar()
+        if not valido:
+            self._enviar(conexion, {"type": T_ERROR, "mensaje": motivo})
+            return
         with self._lock:
             items = dict(self.carritos.get(usuario, {}))
             if not items:

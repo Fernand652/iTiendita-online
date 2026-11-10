@@ -27,6 +27,18 @@ class TestDespacho(unittest.TestCase):
         self.assertEqual(Despacho("domicilio", "Maule").dias_entrega(), 2)
         self.assertEqual(Despacho("domicilio", "Metropolitana").dias_entrega(), 5)
 
+    def test_validar_domicilio_incompleto(self):
+        ok, motivo = Despacho("domicilio", "Maule", "", "Av. 1", "Talca").validar()
+        self.assertFalse(ok)
+        self.assertIn("recibe", motivo)
+
+    def test_validar_domicilio_completo(self):
+        d = Despacho("domicilio", "Maule", "Ana", "Av. 1", "Talca")
+        self.assertEqual(d.validar(), (True, ""))
+
+    def test_validar_retiro_sin_datos(self):
+        self.assertEqual(Despacho().validar(), (True, ""))
+
     def test_ida_y_vuelta_con_direccion_y_comuna(self):
         original = Despacho(
             "domicilio", "Maule", "ana",

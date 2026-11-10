@@ -214,6 +214,9 @@ class carrito(tk.Frame):
 
         # Dirección y comuna solo se muestran cuando se elige despacho a domicilio.
         self.frame_despacho = tk.Frame(resumen, bg=DARK_CARD)
+        tk.Label(self.frame_despacho, text="QUIÉN RECIBE", font=FUENTE_CATEGORIA, bg=DARK_CARD, fg=GRAY_TEXT).pack(anchor="w", pady=(0, 2))
+        self.entry_receptor = tk.Entry(self.frame_despacho, font=FUENTE_BODY, bg=BG_DARK, fg=WHITE, insertbackground=WHITE, relief="flat")
+        self.entry_receptor.pack(fill="x", ipady=5, pady=(0, 4))
         tk.Label(self.frame_despacho, text="DIRECCIÓN", font=FUENTE_CATEGORIA, bg=DARK_CARD, fg=GRAY_TEXT).pack(anchor="w", pady=(0, 2))
         self.entry_direccion = tk.Entry(self.frame_despacho, font=FUENTE_BODY, bg=BG_DARK, fg=WHITE, insertbackground=WHITE, relief="flat")
         self.entry_direccion.pack(fill="x", ipady=5, pady=(0, 4))
@@ -384,7 +387,7 @@ class carrito(tk.Frame):
         self.despacho_actual = Despacho(
             modalidad,
             self.combo_region.get(),
-            self.usuario_actual or "",
+            self.entry_receptor.get().strip(),
             self.entry_direccion.get(),
             self.entry_comuna.get(),
         )
@@ -663,18 +666,11 @@ class carrito(tk.Frame):
             return
 
         self._limpiar_mensaje()
-        modalidad = "domicilio" if self.combo_modalidad.get() == "Despacho a domicilio" else "retiro"
-        if modalidad == "domicilio":
-            if self.combo_region.get() not in Despacho.REGIONES:
-                self._mostrar_mensaje("Selecciona una región válida para el despacho", tipo="error")
-                return
-            if not self.entry_direccion.get().strip():
-                self._mostrar_mensaje("Ingresa una dirección para el despacho", tipo="error")
-                return
-            if not self.entry_comuna.get().strip():
-                self._mostrar_mensaje("Ingresa una comuna para el despacho", tipo="error")
-                return
-        self._actualizar_totales()  # Asegura totales y despacho antes del comprobante
+        self._actualizar_totales()
+        ok, motivo = self.despacho_actual.validar()
+        if not ok:
+            self._mostrar_mensaje(motivo, tipo="error")
+            return
         self._generar_comprobante()
 
 

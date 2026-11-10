@@ -22,6 +22,22 @@ class Despacho:
             return 0
         return 2 if self.region==self.REGION_TIENDA else 5
 
+    def validar(self):
+        """Valida los datos antes de permitir pagar. Retorna (ok, motivo)."""
+        if self.modalidad != "domicilio":
+            return True, ""
+        if not self.receptor:
+            return False, "Ingresa el nombre de quien recibe"
+        if not self.region:
+            return False, "Selecciona una región"
+        if self.region not in self.REGIONES:
+            return False, "La región seleccionada no tiene tarifa de envío"
+        if not self.direccion:
+            return False, "Ingresa una dirección para el despacho"
+        if not self.comuna:
+            return False, "Ingresa una comuna para el despacho"
+        return True, ""
+
     def to_dict(self):
         return {
             "modalidad": self.modalidad,
