@@ -1,4 +1,4 @@
-Francisco Caroca: 7.0
-Miguel Gonzalez: 6.9
-Ignacio Monsalve: 6.8
-Fernand D'Aubeterre: 6.7
+Francisco Caroca: 6.7
+Miguel Gonzalez: 6.8
+Ignacio Monsalve: 6.9
+Fernand D'Aubeterre: 7.0
