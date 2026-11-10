@@ -55,7 +55,7 @@ try:
     from red.protocolo import (
         HOST, PUERTO, TAMANO_BUFFER,
         T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO,
-        T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK,
+        T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK, T_CUPONES,
         T_CARRITOS, T_ERROR,
         empaquetar, extraer_mensajes, normalizar_items, items_a_lista,
     )
@@ -63,7 +63,7 @@ except ImportError:  # ejecución directa dentro de red/
     from protocolo import (
         HOST, PUERTO, TAMANO_BUFFER,
         T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO,
-        T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK,
+        T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK, T_CUPONES,
         T_CARRITOS, T_ERROR,
         empaquetar, extraer_mensajes, normalizar_items, items_a_lista,
     )
@@ -78,9 +78,15 @@ except ImportError:  # ejecución directa dentro de red/
     )
 
 try:
+<<<<<<< Updated upstream
     from modelos.despacho import Despacho
 except ImportError:  # ejecución directa dentro de red/
     from despacho import Despacho
+=======
+    from persistencia.gestor_cupones import GestorCupones
+except ImportError:
+    from gestor_cupones import GestorCupones
+>>>>>>> Stashed changes
 
 # Cada cuánto revisamos el accept() para ver si hay que apagar el servidor.
 TIMEOUT_ACCEPT = 0.5
@@ -98,6 +104,7 @@ class ServidorCarritos(threading.Thread):
     def __init__(self, inventario, host=HOST, puerto=PUERTO):
         super().__init__(daemon=True)
         self.inventario = inventario
+        self.gestor_cupones = GestorCupones()
         self.host = host
         self.puerto = puerto
 
@@ -312,6 +319,8 @@ class ServidorCarritos(threading.Thread):
         self._difundir_stock(tocados)
         # Le mandamos el catálogo COMPLETO para que pueda explorar.
         self._enviar(conexion, {"type": T_INVENTARIO, "productos": self._catalogo()})
+        self._enviar(conexion, {"type": T_CUPONES,
+                     "cupones": [c.to_dict() for c in self.gestor_cupones.cupones.values()]})
         self._difundir_carritos()
         return usuario
 
@@ -455,6 +464,7 @@ class ServidorCarritos(threading.Thread):
                                 "precio": producto.precio, "cantidad": cantidad,
                                 "subtotal": subtotal_item})
 
+<<<<<<< Updated upstream
             envio = despacho.calcular(subtotal)
             iva = (subtotal + envio) * 0.19
             total = subtotal + iva + envio
@@ -464,7 +474,21 @@ class ServidorCarritos(threading.Thread):
 
         self._enviar(conexion, {"type": T_PAGO_OK, "total": total,
                                 "subtotal": subtotal, "envio": envio, "iva": iva})
+=======
+            codigo_cupon = (mensaje or {}).get("cupon", "")
+            ok, descuento, motivo = self.gestor_cupones.consumir(codigo_cupon, total) if codigo_cupon else (True, 0.0, "")
+            if not ok:
+                self._enviar(conexion, {"type": T_ERROR, "mensaje": motivo})
+                return
+            total_final = self._guardar_venta(usuario, detalle, total, run=(mensaje or {}).get("run", ""),
+                                              cupon=codigo_cupon, descuento=descuento)
+            self.carritos.pop(usuario, None)
+
+        self._enviar(conexion, {"type": T_PAGO_OK, "total": total_final or total})
+>>>>>>> Stashed changes
         self._enviar(conexion, {"type": T_CARRITO_ESTADO, "items": []})
+        if codigo_cupon:
+            self.difundir_cupones()
         self._difundir_carritos()
 
     def _siguiente_id_venta(self, ventas):
@@ -479,7 +503,11 @@ class ServidorCarritos(threading.Thread):
                 max_id = vid
         return max_id + 1
 
+<<<<<<< Updated upstream
     def _guardar_venta(self, usuario, detalle, subtotal, envio, despacho, run=None):
+=======
+    def _guardar_venta(self, usuario, detalle, total, run=None, cupon=None, descuento=0.0):
+>>>>>>> Stashed changes
         """Escribe la venta en data/ventas.json (la usa el panel del ADMIN)."""
         try:
             from datetime import datetime
@@ -487,6 +515,7 @@ class ServidorCarritos(threading.Thread):
         except Exception:
             fecha = ""
         try:
+<<<<<<< Updated upstream
             subtotal = float(subtotal)
             envio = float(envio or 0)
             iva = (subtotal + envio) * 0.19
@@ -506,6 +535,19 @@ class ServidorCarritos(threading.Thread):
                 "iva": iva,
                 "total": total_final,
             })
+=======
+            subtotal = float(total)
+            descuento = min(max(0.0, float(descuento)), subtotal)
+            subtotal_neto = subtotal - descuento
+            iva = subtotal_neto * 0.19
+            total_final = subtotal_neto + iva
+            ventas = cargar_json(str(RUTA_VENTAS_JSON), default=[]) or []
+            id_venta = self._siguiente_id_venta(ventas)
+            ventas.append({"id_venta": id_venta, "cliente": usuario, "run": (run or "").strip(), "fecha": fecha,
+                           "items": detalle, "subtotal": subtotal, "cupon": cupon or None,
+                           "descuento": descuento, "subtotal_neto": subtotal_neto,
+                           "iva": iva, "total": total_final})
+>>>>>>> Stashed changes
             guardar_json(str(RUTA_VENTAS_JSON), ventas)
             return id_venta
         except Exception:
@@ -574,6 +616,15 @@ class ServidorCarritos(threading.Thread):
         # Y a la bandeja, para que la ventana del ADMIN recargue su tabla.
         self.eventos.put(mensaje)
         self._difundir_carritos()
+
+    def difundir_cupones(self):
+        """Actualiza el catálogo de cupones en cada caja conectada."""
+        mensaje = {"type": T_CUPONES,
+                   "cupones": [c.to_dict() for c in self.gestor_cupones.cupones.values()]}
+        with self._lock:
+            conexiones = list(self.clientes.keys())
+        for conexion in conexiones:
+            self._enviar(conexion, mensaje)
 
     def _difundir_carritos(self):
         """

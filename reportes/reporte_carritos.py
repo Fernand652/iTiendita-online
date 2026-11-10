@@ -155,6 +155,13 @@ def generar_historial_clientes(run_cliente, ventas_cliente):
         except (TypeError, ValueError):
             iva = 0.0
         lineas.append(f"  {'Subtotal':<34} {_peso(subtotal):>12}")
+        try:
+            descuento = float(v.get("descuento", 0) or 0)
+        except (TypeError, ValueError):
+            descuento = 0.0
+        if v.get("cupon"):
+            lineas.append(f"  {'Cupón ' + str(v['cupon']):<34} -{_peso(descuento):>11}")
+        lineas.append(f"  {'Subtotal neto':<34} {_peso(subtotal - descuento):>12}")
         lineas.append(f"  {'IVA (19%)':<34} {_peso(iva):>12}")
         lineas.append(f"  {'Total venta':<34} {_peso(monto):>12}")
 

@@ -68,7 +68,7 @@ def _toast(parent, mensaje, tipo="error"):
 
 
 class carrito(tk.Frame):
-    def __init__(self, parent, on_volver=None, on_pagar=None, fn_calcular_total=None, usuario_actual=None, on_cerrar_sesion=None, on_agregar=None, on_restar=None, on_eliminar=None, on_vaciar=None, on_pagar_confirmado=None, on_ir_login=None, on_exigir_login=None):
+    def __init__(self, parent, on_volver=None, on_pagar=None, fn_calcular_total=None, usuario_actual=None, on_cerrar_sesion=None, on_agregar=None, on_restar=None, on_eliminar=None, on_vaciar=None, on_pagar_confirmado=None, on_ir_login=None, on_exigir_login=None, cupones=None):
         super().__init__(parent, bg=BG_DARK)
         self.parent = parent
         self.on_volver = on_volver
@@ -93,8 +93,7 @@ class carrito(tk.Frame):
         self.subtotal_actual = 0.0
         self.descuento_actual = 0.0
         self.cupon_activo = None
-        # Catálogo temporal: administración/persistencia queda para el próximo avance.
-        self.cupones = {"CYBER10": Cupon("CYBER10", "porcentaje", 10, "2026-12-31", 50)}
+        self.cupones = cupones if cupones is not None else {}
         self.envio_actual = 0.0
         self.iva_actual = 0.0
         self.total_actual = 0.0
@@ -591,6 +590,11 @@ class carrito(tk.Frame):
             tk.Label(f, text=valor, font=FUENTE_BODY, bg=DARK_CARD, fg=color).pack(side="right")
 
         add_linea("Subtotal:", f"${sub_str}")
+        if self.cupon_activo:
+            desc_fmt = f"{self.descuento_actual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            neto_fmt = f"{self.subtotal_actual - self.descuento_actual:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            add_linea(f"Cupón {self.cupon_activo.codigo}:", f"-${desc_fmt}", color=GREEN)
+            add_linea("Subtotal neto:", f"${neto_fmt}")
         add_linea("Envío:", f"${envio_str}")
         add_linea("IVA (19%):", f"${iva_str}")
         add_linea("TOTAL PAGADO:", f"${tot_str}", color=GREEN)
@@ -618,12 +622,18 @@ class carrito(tk.Frame):
 
             if self.on_pagar_confirmado is not None:
                 despacho = self.despacho_actual.to_dict()
+                codigo_cupon = self.cupon_activo.codigo if self.cupon_activo else None
                 try:
+<<<<<<< Updated upstream
                     ok = self.on_pagar_confirmado(run_cliente, despacho)
+=======
+                    resultado = self.on_pagar_confirmado(run_cliente, despacho, codigo_cupon)
+>>>>>>> Stashed changes
                 except TypeError:
                     try:
-                        ok = self.on_pagar_confirmado(run_cliente)
+                        resultado = self.on_pagar_confirmado(run_cliente)
                     except TypeError:
+<<<<<<< Updated upstream
                         ok = self.on_pagar_confirmado()
                 if not ok:
                     lbl_error_modal.config(
@@ -634,6 +644,16 @@ class carrito(tk.Frame):
                 self.lista_actual = []
                 self.actualizar_carrito([])
                 self._mostrar_mensaje("Venta registrada para el ADMIN", tipo="exito")
+=======
+                        resultado = self.on_pagar_confirmado()
+                ok, mensaje = resultado if isinstance(resultado, tuple) else (resultado, "Venta registrada para el ADMIN")
+                if ok:
+                    self.lista_actual = []
+                    self.actualizar_carrito([])
+                    self._mostrar_mensaje(mensaje, tipo="exito")
+                else:
+                    self._mostrar_mensaje(mensaje, tipo="error")
+>>>>>>> Stashed changes
                 return
 
             if self.on_pagar:

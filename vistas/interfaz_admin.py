@@ -27,6 +27,10 @@ except ImportError:
         from inventario import Inventario
     except ImportError:
         from vistas.inventario import Inventario  # compat legacy (ya eliminado)
+try:
+    from persistencia.gestor_cupones import GestorCupones
+except ImportError:
+    from gestor_cupones import GestorCupones
 
 try:
     from vistas.toast import mostrar_toast
@@ -59,13 +63,15 @@ class PantallaAdmin(tk.Frame):
         on_volver:   función que se llama al hacer click en "VOLVER".
     """
 
-    def __init__(self, parent, inventario=None, carritos=None, on_volver=None, usuario_actual=None, on_cerrar_sesion=None):
+    def __init__(self, parent, inventario=None, carritos=None, on_volver=None, usuario_actual=None, on_cerrar_sesion=None, gestor_cupones=None, on_cupones_cambiaron=None):
         super().__init__(parent, bg=BG_DARK)
         self.inventario = inventario or Inventario()
         self.carritos = carritos if carritos is not None else {}
         self.on_volver = on_volver
         self.usuario_actual = usuario_actual
         self.on_cerrar_sesion = on_cerrar_sesion
+        self.gestor_cupones = gestor_cupones or GestorCupones()
+        self.on_cupones_cambiaron = on_cupones_cambiaron
         self.id_seleccionado = None  # None = modo "crear" ; con valor = modo "editar"
         self._ruta_imagen_tmp = None  # ruta a guardar (relativa data/imagenes/xxx.png) o None
         self._origen_imagen_tmp = None  # archivo PNG origen elegido con Examinar (aún no copiado)
@@ -221,6 +227,12 @@ class PantallaAdmin(tk.Frame):
             command=self._abrir_todas_las_ventas,
         ).pack(side="right", padx=(0, 8), ipadx=8, ipady=4)
 
+        tk.Button(
+            fila_vista, text="CUPONES", font=FUENTE_NAV,
+            bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
+            command=self._abrir_cupones,
+        ).pack(side="right", padx=(0, 8), ipadx=8, ipady=4)
+
         self._crear_reportes(panel)
 
     def _alternar_vista_carritos(self):
@@ -242,6 +254,61 @@ class PantallaAdmin(tk.Frame):
             abrir_ventana_ventas(self)
         except Exception:
             return
+
+    def _abrir_cupones(self):
+        """Formulario acotado de administración para crear y revisar cupones."""
+        ventana = tk.Toplevel(self)
+        ventana.title("Administrar cupones")
+        ventana.geometry("650x620")
+        ventana.configure(bg=BG_DARK)
+        cuerpo = tk.Frame(ventana, bg=BG_DARK, padx=24, pady=20)
+        cuerpo.pack(fill="both", expand=True)
+        tk.Label(cuerpo, text="CUPONES", font=FUENTE_TITULO, bg=BG_DARK, fg=WHITE).pack(anchor="w")
+
+        tabla = ttk.Treeview(cuerpo, columns=("codigo", "tipo", "valor", "vence", "usos"), show="headings", height=7)
+        for clave, texto, ancho in (("codigo", "Código", 110), ("tipo", "Tipo", 110),
+                                    ("valor", "Valor", 80), ("vence", "Vence", 100), ("usos", "Usos", 90)):
+            tabla.heading(clave, text=texto)
+            tabla.column(clave, width=ancho, anchor="center")
+        tabla.pack(fill="x", pady=12)
+
+        formulario = tk.Frame(cuerpo, bg=BG_DARK)
+        formulario.pack(fill="x")
+        entradas = {}
+        for clave, texto in (("codigo", "Código"), ("valor", "Valor"), ("vence", "Vence AAAA-MM-DD"), ("usos", "Máx. usos")):
+            tk.Label(formulario, text=texto, font=FUENTE_CATEGORIA, bg=BG_DARK, fg=GRAY_TEXT).pack(anchor="w")
+            entradas[clave] = tk.Entry(formulario, font=FUENTE_BODY)
+            entradas[clave].pack(fill="x", pady=(0, 5))
+        tk.Label(formulario, text="Tipo", font=FUENTE_CATEGORIA, bg=BG_DARK, fg=GRAY_TEXT).pack(anchor="w")
+        tipo = ttk.Combobox(formulario, values=("porcentaje", "monto_fijo"), state="readonly")
+        tipo.set("porcentaje")
+        tipo.pack(fill="x", pady=(0, 8))
+        mensaje = tk.Label(formulario, text="", font=FUENTE_BODY, bg=BG_DARK, fg="#ff6b6b")
+        mensaje.pack(anchor="w")
+
+        def refrescar():
+            tabla.delete(*tabla.get_children())
+            for cupon in self.gestor_cupones.cupones.values():
+                tabla.insert("", "end", values=(cupon.codigo, cupon.tipo, cupon.valor,
+                             cupon.fecha_vencimiento, f"{cupon.usos}/{cupon.usos_maximos}"))
+
+        def crear():
+            try:
+                self.gestor_cupones.crear(entradas["codigo"].get(), tipo.get(),
+                    entradas["valor"].get(), entradas["vence"].get(), entradas["usos"].get())
+            except (ValueError, TypeError) as error:
+                mensaje.config(text=str(error), fg="#ff6b6b")
+                return
+            mensaje.config(text="Cupón creado", fg=GREEN)
+            for entrada in entradas.values():
+                entrada.delete(0, tk.END)
+            refrescar()
+            if self.on_cupones_cambiaron:
+                self.on_cupones_cambiaron()
+
+        tk.Button(formulario, text="CREAR CUPÓN", font=FUENTE_BOTON, command=crear,
+                  bg=GREEN, fg=BLACK, relief="flat").pack(fill="x", ipady=6)
+        refrescar()
 
     def _configurar_columnas_inventario(self):
         encabezados = {

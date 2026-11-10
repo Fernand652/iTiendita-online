@@ -1,8 +1,4 @@
-"""Base de cupones para el hito 3.
-
-La persistencia y la pantalla de administración se conectarán en el siguiente
-avance; por ahora este modelo concentra las reglas de validación y cálculo.
-"""
+"""Reglas de validación, cálculo y serialización de cupones del hito 3."""
 from datetime import date
 
 
@@ -45,3 +41,14 @@ class Cupon:
         if valido:
             self.usos += 1
         return valido, motivo
+
+    def to_dict(self):
+        return {"codigo": self.codigo, "tipo": self.tipo, "valor": self.valor,
+                "fecha_vencimiento": self.fecha_vencimiento,
+                "usos_maximos": self.usos_maximos, "usos": self.usos}
+
+    @classmethod
+    def from_dict(cls, datos):
+        return cls(datos["codigo"], datos["tipo"], datos["valor"],
+                   datos["fecha_vencimiento"], datos["usos_maximos"],
+                   datos.get("usos", 0))

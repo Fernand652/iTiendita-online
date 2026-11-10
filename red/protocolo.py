@@ -64,6 +64,9 @@ T_PAGO = "pago"
 # {type, usuario, run?: str,
 #  despacho?: {modalidad, region, receptor, direccion, comuna}}
 
+T_CUPONES = "cupones"
+# Catálogo de cupones vigente que el ADMIN envía a cada caja cliente.
+
 # --- Los que manda el SERVIDOR ---
 T_INVENTARIO = "inventario"
 # "Este es el catálogo completo, con el stock REAL"

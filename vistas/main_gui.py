@@ -40,7 +40,9 @@ try:
     from modelos.usuario import GestorUsuarios
     from modelos.inventario import Inventario
     from modelos.producto import Producto
+    from modelos.cupon import Cupon
     from modelos.despacho import Despacho
+    from persistencia.gestor_cupones import GestorCupones
     try:
         from persistencia.gestor_persistencia import (
             RUTA_VENTAS_JSON,
@@ -65,7 +67,9 @@ except ImportError:  # fallback cuando se ejecuta con cwd=vistas/
     from modelos.usuario import GestorUsuarios
     from modelos.inventario import Inventario
     from modelos.producto import Producto
+    from modelos.cupon import Cupon
     from modelos.despacho import Despacho
+    from persistencia.gestor_cupones import GestorCupones
     try:
         from persistencia.gestor_persistencia import (
             RUTA_VENTAS_JSON,
@@ -115,6 +119,7 @@ class RetroVaultApp:
         # compartir exactamente el mismo catálogo en memoria. De lo contrario
         # el administrador edita una copia y los clientes reciben otra.
         self.inventario = inventario or (servidor.inventario if servidor is not None else Inventario())
+        self.gestor_cupones = servidor.gestor_cupones if servidor is not None else GestorCupones()
         # Sesión actual: nombre de usuario logueado o None (invitado)
         self.usuario_actual = None
         # Carritos por cliente: {usuario: [{'producto': Producto, 'cantidad': int}]}
@@ -231,7 +236,7 @@ class RetroVaultApp:
     def _al_recibir_mensaje(self, mensaje):
         """Aplica un mensaje que llegó por socket a la ventana."""
         from red.protocolo import (
-            T_CARRITOS, T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO,
+            T_CARRITOS, T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_CUPONES,
             T_PAGO_OK, T_ERROR, T_DESCONECTADO,
         )
 
@@ -257,6 +262,14 @@ class RetroVaultApp:
                 # mostrando el catálogo viejo y no se daría nunca cuenta.
                 self.inventario.productos[:] = nuevos
                 self._refrescar_todas()
+        elif tipo == T_CUPONES and self.conexion is not None:
+            self.gestor_cupones.cupones.clear()
+            for datos in mensaje.get("cupones") or []:
+                try:
+                    cupon = Cupon.from_dict(datos)
+                    self.gestor_cupones.cupones[cupon.codigo] = cupon
+                except (KeyError, TypeError, ValueError):
+                    continue
         elif tipo == T_STOCK:
             producto = self.inventario.buscar_por_id(mensaje.get("id"))
             if producto is not None:
@@ -416,7 +429,7 @@ class RetroVaultApp:
         self._notificar_carrito()
         return self.carrito
 
-    def _registrar_venta(self, run=None, despacho=None):
+    def _registrar_venta(self, run=None, despacho=None, cupon=None, descuento=0.0):
         """Guarda la venta en data/ventas.json para que el ADMIN la consuma."""
         if RUTA_VENTAS_JSON is None or cargar_json is None:
             return None
@@ -437,8 +450,10 @@ class RetroVaultApp:
         subtotal=sum(float(i["precio"]) * i["cantidad"] for i in items)
         despacho_obj=Despacho.from_dict(despacho)
         envio = despacho_obj.calcular(subtotal)
-        iva=(subtotal+envio)*0.19
-        total=subtotal+iva+envio
+        descuento = min(max(0.0, float(descuento)), subtotal)
+        subtotal_neto = subtotal - descuento
+        iva=(subtotal_neto+envio)*0.19
+        total=subtotal_neto+iva+envio
         ventas = cargar_json(str(RUTA_VENTAS_JSON), default=[]) or []
         id_venta = self._siguiente_id_venta(ventas)
         ventas.append(
@@ -449,6 +464,9 @@ class RetroVaultApp:
                 "fecha": fecha,
                 "items": items,
                 "subtotal": subtotal,
+                "cupon": cupon or None,
+                "descuento": descuento,
+                "subtotal_neto": subtotal_neto,
                 "envio": envio,
                 "despacho": despacho_obj.to_dict(),
                 "iva": iva,
@@ -458,7 +476,7 @@ class RetroVaultApp:
         guardar_json(str(RUTA_VENTAS_JSON), ventas)
         return id_venta
 
-    def _confirmar_pago(self, run=None, despacho=None):
+    def _confirmar_pago(self, run=None, despacho=None, codigo_cupon=None):
         """Confirma la venta: la registra y vacía SIN devolver stock."""
         if not self.carrito:
             return False
@@ -466,16 +484,27 @@ class RetroVaultApp:
             # Con sockets el SERVER es quien cobra y descuenta. El despacho
             # viaja en el mismo mensaje para que la venta quede completa.
             try:
+<<<<<<< Updated upstream
                 self.conexion.pagar(run, despacho)
+=======
+                self.conexion.pagar(run, codigo_cupon)
+>>>>>>> Stashed changes
             except TypeError:
                 try:
                     self.conexion.pagar(run)
                 except TypeError:
                     self.conexion.pagar()
             return True
-        id_venta = self._registrar_venta(run, despacho)
+        descuento = 0.0
+        if codigo_cupon:
+            subtotal = self._calcular_total_carrito(self.carrito)
+            ok, descuento, mensaje = self.gestor_cupones.consumir(codigo_cupon, subtotal)
+            if not ok:
+                _toast(self.root, mensaje, tipo="error")
+                return False, mensaje
+        self._registrar_venta(run, despacho, codigo_cupon, descuento)
         self.carrito.clear()
-        return True
+        return True, "Venta registrada para el ADMIN"
     # navegacion entre las 6 pantallas
     def _requiere_sesion(self):
         """Gate anti-invitado: sin sesión vuelve al login con aviso."""
@@ -581,6 +610,8 @@ class RetroVaultApp:
             on_volver=self.mostrar_principal,
             usuario_actual=self.usuario_actual,
             on_cerrar_sesion=self.cerrar_sesion,
+            gestor_cupones=self.gestor_cupones,
+            on_cupones_cambiaron=(self.servidor.difundir_cupones if self.servidor is not None else None),
         )
         pantalla.pack(fill="both", expand=True)
 
@@ -600,6 +631,7 @@ class RetroVaultApp:
             on_cerrar_sesion=self.cerrar_sesion,
             on_ir_login=lambda: self._ir_a_login_preservando_carrito(destino="carrito"),
             on_exigir_login=lambda: self._exigir_login_para_comprar(destino="carrito"),
+            cupones=self.gestor_cupones.cupones,
         )
         pantalla.pack(fill="both", expand=True)
         pantalla.mostrar_productos(self.carrito)

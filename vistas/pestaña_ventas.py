@@ -322,7 +322,12 @@ class PestanaVentas(tk.Frame):
                 except (TypeError, ValueError):
                     sub = 0.0
                 lineas.append(f"  - {nom} x{cant}  {_fmt_clp(sub)}")
+            descuento = float(v.get("descuento", 0) or 0)
+            subtotal_neto = float(v.get("subtotal_neto", subtotal - descuento) or 0)
             lineas += ["", f"Subtotal: {_fmt_clp(subtotal)}",
+                       f"Cupón: {v.get('cupon') or '—'}",
+                       f"Descuento: {_fmt_clp(descuento)}",
+                       f"Subtotal neto: {_fmt_clp(subtotal_neto)}",
                        f"Envío: {_fmt_clp(envio)}",
                        f"IVA (19%): {_fmt_clp(iva)}",
                        f"TOTAL: {_fmt_clp(total)}"]
