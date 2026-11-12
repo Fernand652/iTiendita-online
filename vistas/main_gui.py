@@ -484,11 +484,7 @@ class RetroVaultApp:
             # Con sockets el SERVER es quien cobra y descuenta. El despacho
             # viaja en el mismo mensaje para que la venta quede completa.
             try:
-<<<<<<< Updated upstream
-                self.conexion.pagar(run, despacho)
-=======
-                self.conexion.pagar(run, codigo_cupon)
->>>>>>> Stashed changes
+                self.conexion.pagar(run, despacho, codigo_cupon)
             except TypeError:
                 try:
                     self.conexion.pagar(run)
