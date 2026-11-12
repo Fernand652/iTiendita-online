@@ -36,12 +36,14 @@ try:
     from vistas.chat_vista import PantallaChat
     from vistas.interfaz_admin import PantallaAdmin
     from vistas.carrito_vista import carrito as PantallaCarrito
+    from vistas.lista_deseos_vista import PantallaListaDeseos
     from vistas.toast import mostrar_toast
     from modelos.usuario import GestorUsuarios
     from modelos.inventario import Inventario
     from modelos.producto import Producto
     from modelos.cupon import Cupon
     from modelos.despacho import Despacho
+    from modelos.lista_deseos import ListaDeseos
     from persistencia.gestor_cupones import GestorCupones
     try:
         from persistencia.gestor_persistencia import (
@@ -60,6 +62,7 @@ except ImportError:  # fallback cuando se ejecuta con cwd=vistas/
     from chat_vista import PantallaChat
     from interfaz_admin import PantallaAdmin
     from carrito_vista import carrito as PantallaCarrito
+    from lista_deseos_vista import PantallaListaDeseos
     try:
         from toast import mostrar_toast
     except ImportError:
@@ -69,6 +72,7 @@ except ImportError:  # fallback cuando se ejecuta con cwd=vistas/
     from modelos.producto import Producto
     from modelos.cupon import Cupon
     from modelos.despacho import Despacho
+    from modelos.lista_deseos import ListaDeseos
     from persistencia.gestor_cupones import GestorCupones
     try:
         from persistencia.gestor_persistencia import (
@@ -120,6 +124,7 @@ class RetroVaultApp:
         # el administrador edita una copia y los clientes reciben otra.
         self.inventario = inventario or (servidor.inventario if servidor is not None else Inventario())
         self.gestor_cupones = servidor.gestor_cupones if servidor is not None else GestorCupones()
+        self.lista_deseos = ListaDeseos()
         # Sesión actual: nombre de usuario logueado o None (invitado)
         self.usuario_actual = None
         # Carritos por cliente: {usuario: [{'producto': Producto, 'cantidad': int}]}
@@ -557,6 +562,9 @@ class RetroVaultApp:
             on_ver_carrito=self.mostrar_carrito,
             on_ir_explorar=self.mostrar_explorar,
             on_ir_chat=self.mostrar_chat,
+            on_favorito=self._guardar_favorito,
+            on_suscribir=self._suscribirse_reposicion,
+            on_ver_deseos=self.mostrar_lista_deseos,
             usuario_actual=self.usuario_actual,
             es_admin=self._es_admin(),
             on_cerrar_sesion=self.cerrar_sesion,
@@ -574,11 +582,38 @@ class RetroVaultApp:
             on_agregar_carro=self._agregar_al_carrito,
             filtro_inicial=filtro_inicial,
             on_ver_carrito=self.mostrar_carrito,
+            on_favorito=self._guardar_favorito,
+            on_suscribir=self._suscribirse_reposicion,
             usuario_actual=self.usuario_actual,
             on_cerrar_sesion=self.cerrar_sesion,
             on_ir_login=lambda: self._ir_a_login_preservando_carrito(destino="principal"),
         )
         pantalla.pack(fill="both", expand=True)
+
+    def _accion_deseos(self, accion, producto):
+        if self.usuario_actual is None:
+            return False, "Inicia sesión para guardar productos"
+        try:
+            return accion(self.usuario_actual, producto.id)
+        except ValueError as error:
+            return False, str(error)
+
+    def _guardar_favorito(self, producto):
+        return self._accion_deseos(self.lista_deseos.guardar_favorito, producto)
+
+    def _suscribirse_reposicion(self, producto):
+        if producto.stock > 0:
+            return False, "Este producto ya tiene stock disponible"
+        return self._accion_deseos(self.lista_deseos.suscribirse, producto)
+
+    def mostrar_lista_deseos(self):
+        if self.usuario_actual is None:
+            self._ir_a_login_preservando_carrito(destino="principal")
+            return
+        self._limpiar_contenedor()
+        PantallaListaDeseos(self.contenedor, self.inventario, self.lista_deseos,
+                            self.usuario_actual, on_volver=self.mostrar_principal,
+                            on_agregar_carro=self._agregar_al_carrito).pack(fill="both", expand=True)
 
     def mostrar_chat(self):
         self._limpiar_contenedor()

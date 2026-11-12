@@ -78,15 +78,11 @@ except ImportError:  # ejecución directa dentro de red/
     )
 
 try:
-<<<<<<< Updated upstream
     from modelos.despacho import Despacho
+    from persistencia.gestor_cupones import GestorCupones
 except ImportError:  # ejecución directa dentro de red/
     from despacho import Despacho
-=======
-    from persistencia.gestor_cupones import GestorCupones
-except ImportError:
     from gestor_cupones import GestorCupones
->>>>>>> Stashed changes
 
 # Cada cuánto revisamos el accept() para ver si hay que apagar el servidor.
 TIMEOUT_ACCEPT = 0.5
@@ -464,28 +460,26 @@ class ServidorCarritos(threading.Thread):
                                 "precio": producto.precio, "cantidad": cantidad,
                                 "subtotal": subtotal_item})
 
-<<<<<<< Updated upstream
-            envio = despacho.calcular(subtotal)
-            iva = (subtotal + envio) * 0.19
-            total = subtotal + iva + envio
-            self._guardar_venta(usuario, detalle, subtotal, envio, despacho,
-                                run=(mensaje or {}).get("run", ""))
-            self.carritos.pop(usuario, None)
-
-        self._enviar(conexion, {"type": T_PAGO_OK, "total": total,
-                                "subtotal": subtotal, "envio": envio, "iva": iva})
-=======
             codigo_cupon = (mensaje or {}).get("cupon", "")
-            ok, descuento, motivo = self.gestor_cupones.consumir(codigo_cupon, total) if codigo_cupon else (True, 0.0, "")
+            ok, descuento, motivo = (
+                self.gestor_cupones.consumir(codigo_cupon, subtotal)
+                if codigo_cupon else (True, 0.0, "")
+            )
             if not ok:
                 self._enviar(conexion, {"type": T_ERROR, "mensaje": motivo})
                 return
-            total_final = self._guardar_venta(usuario, detalle, total, run=(mensaje or {}).get("run", ""),
-                                              cupon=codigo_cupon, descuento=descuento)
+            envio = despacho.calcular(subtotal)
+            subtotal_neto = subtotal - descuento
+            iva = (subtotal_neto + envio) * 0.19
+            total_final = subtotal_neto + iva + envio
+            self._guardar_venta(usuario, detalle, subtotal, envio, despacho,
+                                run=(mensaje or {}).get("run", ""),
+                                cupon=codigo_cupon, descuento=descuento)
             self.carritos.pop(usuario, None)
 
-        self._enviar(conexion, {"type": T_PAGO_OK, "total": total_final or total})
->>>>>>> Stashed changes
+        self._enviar(conexion, {"type": T_PAGO_OK, "total": total_final,
+                                "subtotal": subtotal, "descuento": descuento,
+                                "envio": envio, "iva": iva})
         self._enviar(conexion, {"type": T_CARRITO_ESTADO, "items": []})
         if codigo_cupon:
             self.difundir_cupones()
@@ -503,11 +497,8 @@ class ServidorCarritos(threading.Thread):
                 max_id = vid
         return max_id + 1
 
-<<<<<<< Updated upstream
-    def _guardar_venta(self, usuario, detalle, subtotal, envio, despacho, run=None):
-=======
-    def _guardar_venta(self, usuario, detalle, total, run=None, cupon=None, descuento=0.0):
->>>>>>> Stashed changes
+    def _guardar_venta(self, usuario, detalle, subtotal, envio, despacho,
+                       run=None, cupon=None, descuento=0.0):
         """Escribe la venta en data/ventas.json (la usa el panel del ADMIN)."""
         try:
             from datetime import datetime
@@ -515,39 +506,22 @@ class ServidorCarritos(threading.Thread):
         except Exception:
             fecha = ""
         try:
-<<<<<<< Updated upstream
             subtotal = float(subtotal)
             envio = float(envio or 0)
-            iva = (subtotal + envio) * 0.19
-            total_final = subtotal + iva + envio
+            descuento = min(max(0.0, float(descuento)), subtotal)
+            subtotal_neto = subtotal - descuento
+            iva = (subtotal_neto + envio) * 0.19
+            total_final = subtotal_neto + envio + iva
             ventas = cargar_json(str(RUTA_VENTAS_JSON), default=[]) or []
             id_venta = self._siguiente_id_venta(ventas)
             despacho_dict = despacho.to_dict() if despacho is not None else Despacho().to_dict()
             ventas.append({
-                "id_venta": id_venta,
-                "cliente": usuario,
-                "run": (run or "").strip(),
-                "fecha": fecha,
-                "items": detalle,
-                "subtotal": subtotal,
-                "envio": envio,
-                "despacho": despacho_dict,
-                "iva": iva,
-                "total": total_final,
+                "id_venta": id_venta, "cliente": usuario, "run": (run or "").strip(),
+                "fecha": fecha, "items": detalle, "subtotal": subtotal,
+                "cupon": cupon or None, "descuento": descuento,
+                "subtotal_neto": subtotal_neto, "envio": envio,
+                "despacho": despacho_dict, "iva": iva, "total": total_final,
             })
-=======
-            subtotal = float(total)
-            descuento = min(max(0.0, float(descuento)), subtotal)
-            subtotal_neto = subtotal - descuento
-            iva = subtotal_neto * 0.19
-            total_final = subtotal_neto + iva
-            ventas = cargar_json(str(RUTA_VENTAS_JSON), default=[]) or []
-            id_venta = self._siguiente_id_venta(ventas)
-            ventas.append({"id_venta": id_venta, "cliente": usuario, "run": (run or "").strip(), "fecha": fecha,
-                           "items": detalle, "subtotal": subtotal, "cupon": cupon or None,
-                           "descuento": descuento, "subtotal_neto": subtotal_neto,
-                           "iva": iva, "total": total_final})
->>>>>>> Stashed changes
             guardar_json(str(RUTA_VENTAS_JSON), ventas)
             return id_venta
         except Exception:

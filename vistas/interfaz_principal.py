@@ -79,10 +79,12 @@ class TarjetaProducto(tk.Frame):
     directamente los productos de tu Inventario real.
     """
 
-    def __init__(self, parent, producto, on_agregar_carro=None):
+    def __init__(self, parent, producto, on_agregar_carro=None, on_favorito=None, on_suscribir=None):
         super().__init__(parent, bg=DARK_CARD, padx=15, pady=15)
         self.producto = producto
         self.on_agregar_carro = on_agregar_carro
+        self.on_favorito = on_favorito
+        self.on_suscribir = on_suscribir
         self._construir()
 
     def _construir(self):
@@ -130,9 +132,26 @@ class TarjetaProducto(tk.Frame):
             command=self._agregar
         ).pack(fill="x", ipady=6)
 
+        if self.on_favorito is not None:
+            tk.Button(self, text="♡ GUARDAR EN DESEOS", font=FUENTE_CATEGORIA,
+                      bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0,
+                      cursor="hand2", command=self._guardar_favorito).pack(fill="x", pady=(6, 0), ipady=5)
+        if sin_stock and self.on_suscribir is not None:
+            tk.Button(self, text="AVÍSAME CUANDO LLEGUE", font=FUENTE_CATEGORIA,
+                      bg=GREEN, fg=BLACK, relief="flat", bd=0,
+                      cursor="hand2", command=self._suscribirse).pack(fill="x", pady=(6, 0), ipady=5)
+
     def _agregar(self):
         if self.on_agregar_carro:
             self.on_agregar_carro(self.producto)
+
+    def _guardar_favorito(self):
+        if self.on_favorito:
+            self.on_favorito(self.producto)
+
+    def _suscribirse(self):
+        if self.on_suscribir:
+            self.on_suscribir(self.producto)
 
 
 class PantallaPrincipal(tk.Frame):
@@ -148,7 +167,7 @@ class PantallaPrincipal(tk.Frame):
                            hace click en "Añadir al Carro".
     """
 
-    def __init__(self, parent, inventario=None, on_agregar_carro=None, on_ir_admin=None, on_ver_carrito=None, on_ir_explorar=None, on_ir_chat=None, usuario_actual=None, es_admin=False, on_cerrar_sesion=None, on_ir_login=None):
+    def __init__(self, parent, inventario=None, on_agregar_carro=None, on_ir_admin=None, on_ver_carrito=None, on_ir_explorar=None, on_ir_chat=None, on_favorito=None, on_suscribir=None, on_ver_deseos=None, usuario_actual=None, es_admin=False, on_cerrar_sesion=None, on_ir_login=None):
         super().__init__(parent, bg=BG_DARK)
         # Acepta tanto lista de productos como instancia de Inventario
         if inventario is None:
@@ -162,6 +181,9 @@ class PantallaPrincipal(tk.Frame):
         self.on_ver_carrito = on_ver_carrito
         self.on_ir_explorar = on_ir_explorar
         self.on_ir_chat = on_ir_chat
+        self.on_favorito = on_favorito
+        self.on_suscribir = on_suscribir
+        self.on_ver_deseos = on_ver_deseos
         self.usuario_actual = usuario_actual
         self.es_admin = bool(es_admin)
         self.on_cerrar_sesion = on_cerrar_sesion
@@ -248,6 +270,12 @@ class PantallaPrincipal(tk.Frame):
         lbl_carrito.pack(side="left", padx=4)
         lbl_carrito.bind("<Button-1>", lambda e: self._abrir_carrito())
 
+        if self.usuario_actual is not None and self.on_ver_deseos is not None:
+            deseos = tk.Label(iconos, text="♡ DESEOS", font=FUENTE_NAV,
+                              bg=GRAY_BTN, fg=WHITE, padx=10, pady=6, cursor="hand2")
+            deseos.pack(side="left", padx=4)
+            deseos.bind("<Button-1>", lambda e: self.on_ver_deseos())
+
         nombre = self.usuario_actual or "Invitado"
         lbl_user = tk.Label(
             iconos, text=f"👤 {nombre}", font=FUENTE_NAV,
@@ -329,6 +357,19 @@ class PantallaPrincipal(tk.Frame):
         else:
             self._mostrar_estado(f"Añadido: {producto.nombre}", es_error=False)
 
+    def _on_favorito(self, producto):
+        self._mostrar_resultado(self.on_favorito, producto)
+
+    def _on_suscribir(self, producto):
+        self._mostrar_resultado(self.on_suscribir, producto)
+
+    def _mostrar_resultado(self, accion, producto):
+        if accion is None:
+            return
+        resultado = accion(producto)
+        if isinstance(resultado, tuple):
+            self._mostrar_estado(resultado[1], es_error=not resultado[0])
+
     def _ir_explorar(self, limpio=False):
         if self.on_ir_explorar:
             if limpio:
@@ -408,7 +449,8 @@ class PantallaPrincipal(tk.Frame):
             return
 
         for i, producto in enumerate(productos):
-            tarjeta = TarjetaProducto(self.grid_catalogo, producto, on_agregar_carro=self._on_agregar)
+            tarjeta = TarjetaProducto(self.grid_catalogo, producto, on_agregar_carro=self._on_agregar,
+                                      on_favorito=self._on_favorito, on_suscribir=self._on_suscribir)
             tarjeta.grid(row=0, column=i, padx=12)
 
     def refrescar(self):

@@ -66,7 +66,7 @@ class PantallaExplorar(tk.Frame):
 
     COLUMNAS_POR_FILA = 3
 
-    def __init__(self, parent, inventario=None, on_volver=None, on_agregar_carro=None, filtro_inicial="", on_ver_carrito=None, usuario_actual=None, on_cerrar_sesion=None, on_ir_login=None):
+    def __init__(self, parent, inventario=None, on_volver=None, on_agregar_carro=None, filtro_inicial="", on_ver_carrito=None, on_favorito=None, on_suscribir=None, usuario_actual=None, on_cerrar_sesion=None, on_ir_login=None):
         super().__init__(parent, bg=BG_DARK)
         # Acepta instancia de Inventario o lista directa
         if inventario is None:
@@ -83,6 +83,8 @@ class PantallaExplorar(tk.Frame):
         self.on_volver = on_volver
         self.on_agregar_carro = on_agregar_carro
         self.on_ver_carrito = on_ver_carrito
+        self.on_favorito = on_favorito
+        self.on_suscribir = on_suscribir
         self.usuario_actual = usuario_actual
         self.on_cerrar_sesion = on_cerrar_sesion
         self.on_ir_login = on_ir_login
@@ -297,6 +299,19 @@ class PantallaExplorar(tk.Frame):
         else:
             self._mostrar_estado(f"Añadido: {producto.nombre}", es_error=False)
 
+    def _on_favorito(self, producto):
+        self._mostrar_resultado(self.on_favorito, producto)
+
+    def _on_suscribir(self, producto):
+        self._mostrar_resultado(self.on_suscribir, producto)
+
+    def _mostrar_resultado(self, accion, producto):
+        if accion is None:
+            return
+        resultado = accion(producto)
+        if isinstance(resultado, tuple):
+            self._mostrar_estado(resultado[1], es_error=not resultado[0])
+
     def _set_conteo(self, n, total):
         """Conteo silencioso en lbl_estado (sin toast para no spamear al tipear)."""
         try:
@@ -388,7 +403,8 @@ class PantallaExplorar(tk.Frame):
         for i, producto in enumerate(productos):
             fila = i // self.COLUMNAS_POR_FILA
             columna = i % self.COLUMNAS_POR_FILA
-            tarjeta = TarjetaProducto(self.frame_scrollable, producto, on_agregar_carro=self._on_agregar)
+            tarjeta = TarjetaProducto(self.frame_scrollable, producto, on_agregar_carro=self._on_agregar,
+                                      on_favorito=self._on_favorito, on_suscribir=self._on_suscribir)
             tarjeta.grid(row=fila, column=columna, padx=12, pady=12, sticky="nsew")
 
         # 3 columnas fijas que reparten todo el ancho por igual

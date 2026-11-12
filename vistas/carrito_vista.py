@@ -624,36 +624,20 @@ class carrito(tk.Frame):
                 despacho = self.despacho_actual.to_dict()
                 codigo_cupon = self.cupon_activo.codigo if self.cupon_activo else None
                 try:
-<<<<<<< Updated upstream
-                    ok = self.on_pagar_confirmado(run_cliente, despacho)
-=======
                     resultado = self.on_pagar_confirmado(run_cliente, despacho, codigo_cupon)
->>>>>>> Stashed changes
                 except TypeError:
                     try:
                         resultado = self.on_pagar_confirmado(run_cliente)
                     except TypeError:
-<<<<<<< Updated upstream
-                        ok = self.on_pagar_confirmado()
-                if not ok:
-                    lbl_error_modal.config(
-                        text="No se pudo registrar la venta. Intenta nuevamente."
-                    )
-                    return
-                modal.destroy()
-                self.lista_actual = []
-                self.actualizar_carrito([])
-                self._mostrar_mensaje("Venta registrada para el ADMIN", tipo="exito")
-=======
                         resultado = self.on_pagar_confirmado()
                 ok, mensaje = resultado if isinstance(resultado, tuple) else (resultado, "Venta registrada para el ADMIN")
                 if ok:
+                    modal.destroy()
                     self.lista_actual = []
                     self.actualizar_carrito([])
                     self._mostrar_mensaje(mensaje, tipo="exito")
                 else:
-                    self._mostrar_mensaje(mensaje, tipo="error")
->>>>>>> Stashed changes
+                    lbl_error_modal.config(text=mensaje or "No se pudo registrar la venta. Intenta nuevamente.")
                 return
 
             if self.on_pagar:

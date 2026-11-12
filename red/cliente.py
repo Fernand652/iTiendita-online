@@ -135,23 +135,15 @@ class ConexionServidor(threading.Thread):
         """Pide vaciar el carrito entero."""
         return self.enviar({"type": T_VACIAR, "usuario": self.usuario})
 
-<<<<<<< Updated upstream
-    def pagar(self, run=None, despacho=None):
-        """Confirma la compra de lo que hay en el carrito (RUN y despacho opcionales)."""
+    def pagar(self, run=None, despacho=None, codigo_cupon=None):
+        """Confirma compra con RUN, entrega y cupón opcionales."""
         mensaje = {"type": T_PAGO, "usuario": self.usuario}
         if (run or "").strip():
             mensaje["run"] = (run or "").strip()
         if isinstance(despacho, dict):
             mensaje["despacho"] = despacho
-=======
-    def pagar(self, run=None, codigo_cupon=None):
-        """Confirma la compra de lo que hay en el carrito (RUN opcional)."""
-        mensaje = {"type": T_PAGO, "usuario": self.usuario}
-        if (run or "").strip():
-            mensaje["run"] = (run or "").strip()
         if (codigo_cupon or "").strip():
             mensaje["cupon"] = (codigo_cupon or "").strip().upper()
->>>>>>> Stashed changes
         return self.enviar(mensaje)
 
     # ------------------------------------------------------------------
