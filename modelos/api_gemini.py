@@ -10,7 +10,7 @@ import json
 
 API_KEY = "AQ.Ab8RN6JTCg7mMVgXM4-kghXd5ffa3G5hM1FaxfGc4B7Xr6hWcg"
 MODELO = "gemini-2.5-flash"
-URL = f"https://generativelanguage.googleapis.com/v1/models/{MODELO}:generateContent?key={API_KEY}"
+URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODELO}:generateContent?key={API_KEY}"
 
 
 def armar_catalogo(productos):
@@ -34,19 +34,21 @@ def armar_catalogo(productos):
     return "\n".join(lineas) or "(sin productos)"
 
 
+def armar_instruccion(productos):
+    # contexto (instruccion de sistema): tienda + catalogo vigente
+    return (
+        "Eres el asistente de RetroVault, una tienda de videojuegos y consolas retro. "
+        "Responde breve y amable y solo sobre los productos de la tienda. "
+        "Usa SOLO este catalogo:\n"
+        + armar_catalogo(productos)
+    )
+
+
 def consultar_gemini(pregunta, productos, historial=None):
     # manda la pregunta del cliente a gemini con el catalogo de la tienda.
     # devuelve siempre (respuesta, error): uno de los dos es None
     if not str(pregunta or "").strip():
         return None, "Escribe una pregunta primero."
-
-    mensaje = (
-        "Eres el asistente de la tienda RetroVault. Responde en español, "
-        "breve y amable, usando SOLO este catálogo:\n"
-        + armar_catalogo(productos)
-        + "\n\nPregunta del cliente: "
-        + str(pregunta)
-    )
 
     # el historial va antes de la pregunta nueva para que gemini tenga
     # contexto de la conversacion (p.ej. "y el mas barato de esos?")
@@ -55,9 +57,11 @@ def consultar_gemini(pregunta, productos, historial=None):
         texto = "".join(p.get("text", "") for p in turno.get("parts", []))
         if turno.get("role") in ("user", "model") and texto:
             contenido.append({"role": turno["role"], "parts": [{"text": texto}]})
-    contenido.append({"role": "user", "parts": [{"text": mensaje}]})
+    contenido.append({"role": "user", "parts": [{"text": str(pregunta)}]})
 
+    # la tienda y el catalogo van como instruccion de sistema
     datos = json.dumps({
+        "systemInstruction": {"parts": [{"text": armar_instruccion(productos)}]},
         "contents": contenido,
         "generationConfig": {"maxOutputTokens": 2000},
     }).encode("utf-8")
