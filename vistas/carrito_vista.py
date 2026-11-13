@@ -147,9 +147,51 @@ class carrito(tk.Frame):
         self.col_izquierda.pack(side="left", fill="both", expand=True, padx=(0, 25))
 
         # Columna Derecha: Resumen (Item 4: Desglose claro y separado)
-        resumen = tk.Frame(columnas, bg=DARK_CARD, width=320, padx=25, pady=25)
-        resumen.pack(side="right", fill="y")
-        resumen.pack_propagate(False)
+        panel_resumen = tk.Frame(columnas, bg=DARK_CARD, width=340)
+        panel_resumen.pack(side="right", fill="y")
+        panel_resumen.pack_propagate(False)
+
+        self.canvas_resumen = tk.Canvas(
+            panel_resumen, bg=DARK_CARD, highlightthickness=0, bd=0
+        )
+        self.scroll_resumen = ttk.Scrollbar(
+            panel_resumen, orient="vertical", command=self.canvas_resumen.yview
+        )
+        self.canvas_resumen.configure(yscrollcommand=self.scroll_resumen.set)
+        self.canvas_resumen.pack(side="left", fill="both", expand=True)
+        self.scroll_resumen.pack(side="right", fill="y")
+
+        resumen = tk.Frame(self.canvas_resumen, bg=DARK_CARD, padx=25, pady=25)
+        ventana_resumen = self.canvas_resumen.create_window(
+            (0, 0), window=resumen, anchor="nw"
+        )
+
+        def _ajustar_resumen(_evento=None):
+            ancho = self.canvas_resumen.winfo_width()
+            if ancho > 1:
+                self.canvas_resumen.itemconfigure(ventana_resumen, width=ancho)
+            self.canvas_resumen.configure(
+                scrollregion=self.canvas_resumen.bbox("all")
+            )
+
+        resumen.bind("<Configure>", _ajustar_resumen)
+        self.canvas_resumen.bind("<Configure>", _ajustar_resumen)
+
+        def _rueda_resumen(evento):
+            if getattr(evento, "num", None) == 4:
+                paso = -1
+            elif getattr(evento, "num", None) == 5:
+                paso = 1
+            else:
+                paso = -1 if evento.delta > 0 else 1
+            self.canvas_resumen.yview_scroll(paso, "units")
+
+        def _enlazar_rueda(widget):
+            widget.bind("<MouseWheel>", _rueda_resumen, add="+")
+            widget.bind("<Button-4>", _rueda_resumen, add="+")
+            widget.bind("<Button-5>", _rueda_resumen, add="+")
+            for hijo in widget.winfo_children():
+                _enlazar_rueda(hijo)
 
         tk.Label(resumen, text="RESUMEN", font=FUENTE_TITULO, bg=DARK_CARD, fg=WHITE).pack(anchor="w", pady=(0, 8))
         tk.Frame(resumen, bg=GRAY_BTN, height=1).pack(fill="x", pady=4)
@@ -248,6 +290,9 @@ class carrito(tk.Frame):
             bg=GRAY_BTN, fg=WHITE, activebackground="#ff4d4d",
             relief="flat", bd=0, cursor="hand2", command=self.vacia_todo
         ).pack(fill="x", ipady=8, pady=(6,0))
+
+        _enlazar_rueda(resumen)
+        self.after_idle(_ajustar_resumen)
 
     def _mostrar_mensaje(self, msg, tipo="error"):
         self.lbl_mensaje.config(text=msg)
@@ -373,6 +418,8 @@ class carrito(tk.Frame):
     def _cambio_modalidad(self):
         self._actualizar_campos_despacho()
         self._actualizar_totales()
+        destino = 1.0 if self.combo_modalidad.get() == "Despacho a domicilio" else 0.0
+        self.after_idle(lambda: self.canvas_resumen.yview_moveto(destino))
 
     def _actualizar_campos_despacho(self):
         if self.combo_modalidad.get() == "Despacho a domicilio":
@@ -533,7 +580,15 @@ class carrito(tk.Frame):
                 entrega += f"\nDirección: {self.despacho_actual.direccion}"
             if self.despacho_actual.receptor:
                 entrega += f" | Recibe: {self.despacho_actual.receptor}"
-            entrega += f"\nEntrega estimada: {self.despacho_actual.dias_entrega()} días hábiles"
+            dias = self.despacho_actual.dias_entrega()
+            fecha_estimada = self.despacho_actual.fecha_estimada_entrega()
+            if fecha_estimada:
+                entrega += (
+                    f"\nEntrega estimada: {fecha_estimada.strftime('%d-%m-%Y')} "
+                    f"({dias} días hábiles)"
+                )
+            else:
+                entrega += f"\nEntrega estimada: {dias} días hábiles"
         else:
             entrega = "Retiro en tienda"
         tk.Label(

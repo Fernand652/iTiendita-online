@@ -19,6 +19,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import tkinter as tk
+from datetime import datetime
 from tkinter import ttk, messagebox
 
 try:
@@ -107,6 +108,15 @@ def _fmt_clp(valor):
         return f"${float(valor):,.0f}".replace(",", ".")
     except (TypeError, ValueError):
         return "$0"
+
+
+def _fmt_fecha(valor):
+    if not valor:
+        return "No disponible"
+    try:
+        return datetime.strptime(str(valor)[:10], "%Y-%m-%d").strftime("%d-%m-%Y")
+    except ValueError:
+        return str(valor)
 
 
 class PestanaVentas(tk.Frame):
@@ -293,6 +303,10 @@ class PestanaVentas(tk.Frame):
                     dias = None
                 if dias:
                     entrega += f" ({dias} días)"
+                entrega += (
+                    " | entrega estimada: "
+                    f"{_fmt_fecha(despacho.get('fecha_estimada_entrega'))}"
+                )
             else:
                 entrega = "Retiro en tienda"
             if not subtotal and total:

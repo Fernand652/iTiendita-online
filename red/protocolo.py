@@ -67,6 +67,8 @@ T_PAGO = "pago"
 T_CUPONES = "cupones"
 # Catálogo de cupones vigente que el ADMIN envía a cada caja cliente.
 
+T_TARIFAS = "tarifas"
+
 # --- Los que manda el SERVIDOR ---
 T_INVENTARIO = "inventario"
 # "Este es el catálogo completo, con el stock REAL"

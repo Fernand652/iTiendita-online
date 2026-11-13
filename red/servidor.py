@@ -56,7 +56,7 @@ try:
         HOST, PUERTO, TAMANO_BUFFER,
         T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO,
         T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK, T_CUPONES,
-        T_CARRITOS, T_ERROR,
+        T_TARIFAS, T_CARRITOS, T_ERROR,
         empaquetar, extraer_mensajes, normalizar_items, items_a_lista,
     )
 except ImportError:  # ejecución directa dentro de red/
@@ -64,7 +64,7 @@ except ImportError:  # ejecución directa dentro de red/
         HOST, PUERTO, TAMANO_BUFFER,
         T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO,
         T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK, T_CUPONES,
-        T_CARRITOS, T_ERROR,
+        T_TARIFAS, T_CARRITOS, T_ERROR,
         empaquetar, extraer_mensajes, normalizar_items, items_a_lista,
     )
 
@@ -80,9 +80,11 @@ except ImportError:  # ejecución directa dentro de red/
 try:
     from modelos.despacho import Despacho
     from persistencia.gestor_cupones import GestorCupones
+    from persistencia.gestor_tarifas import GestorTarifas
 except ImportError:  # ejecución directa dentro de red/
     from despacho import Despacho
     from gestor_cupones import GestorCupones
+    from gestor_tarifas import GestorTarifas
 
 # Cada cuánto revisamos el accept() para ver si hay que apagar el servidor.
 TIMEOUT_ACCEPT = 0.5
@@ -97,10 +99,11 @@ class ServidorCarritos(threading.Thread):
     se bloquea.
     """
 
-    def __init__(self, inventario, host=HOST, puerto=PUERTO):
+    def __init__(self, inventario, host=HOST, puerto=PUERTO, gestor_tarifas=None):
         super().__init__(daemon=True)
         self.inventario = inventario
         self.gestor_cupones = GestorCupones()
+        self.gestor_tarifas = gestor_tarifas or GestorTarifas()
         self.host = host
         self.puerto = puerto
 
@@ -317,6 +320,8 @@ class ServidorCarritos(threading.Thread):
         self._enviar(conexion, {"type": T_INVENTARIO, "productos": self._catalogo()})
         self._enviar(conexion, {"type": T_CUPONES,
                      "cupones": [c.to_dict() for c in self.gestor_cupones.cupones.values()]})
+        self._enviar(conexion, {"type": T_TARIFAS,
+                     "config": self.gestor_tarifas.config})
         self._difundir_carritos()
         return usuario
 
@@ -534,8 +539,8 @@ class ServidorCarritos(threading.Thread):
         no está mirando esa pantalla.
         """
         with self._lock:
-            self.clientes.pop(conexion, None)
             liberado, tocados = self._reconciliar(usuario, {}) if usuario else ({}, [])
+            self.clientes.pop(conexion, None)
 
         try:
             conexion.close()
@@ -595,6 +600,13 @@ class ServidorCarritos(threading.Thread):
         """Actualiza el catálogo de cupones en cada caja conectada."""
         mensaje = {"type": T_CUPONES,
                    "cupones": [c.to_dict() for c in self.gestor_cupones.cupones.values()]}
+        with self._lock:
+            conexiones = list(self.clientes.keys())
+        for conexion in conexiones:
+            self._enviar(conexion, mensaje)
+
+    def difundir_tarifas(self):
+        mensaje = {"type": T_TARIFAS, "config": self.gestor_tarifas.config}
         with self._lock:
             conexiones = list(self.clientes.keys())
         for conexion in conexiones:

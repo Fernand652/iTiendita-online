@@ -38,6 +38,7 @@ try:
     from vistas.carrito_vista import carrito as PantallaCarrito
     from vistas.lista_deseos_vista import PantallaListaDeseos
     from vistas.toast import mostrar_toast
+    from persistencia.gestor_tarifas import GestorTarifas
     from modelos.usuario import GestorUsuarios
     from modelos.inventario import Inventario
     from modelos.producto import Producto
@@ -67,6 +68,7 @@ except ImportError:  # fallback cuando se ejecuta con cwd=vistas/
         from toast import mostrar_toast
     except ImportError:
         mostrar_toast = None
+    from persistencia.gestor_tarifas import GestorTarifas
     from modelos.usuario import GestorUsuarios
     from modelos.inventario import Inventario
     from modelos.producto import Producto
@@ -124,6 +126,7 @@ class RetroVaultApp:
         # el administrador edita una copia y los clientes reciben otra.
         self.inventario = inventario or (servidor.inventario if servidor is not None else Inventario())
         self.gestor_cupones = servidor.gestor_cupones if servidor is not None else GestorCupones()
+        self.gestor_tarifas = servidor.gestor_tarifas if servidor is not None else GestorTarifas()
         self.lista_deseos = ListaDeseos()
         # Sesión actual: nombre de usuario logueado o None (invitado)
         self.usuario_actual = None
@@ -242,7 +245,7 @@ class RetroVaultApp:
         """Aplica un mensaje que llegó por socket a la ventana."""
         from red.protocolo import (
             T_CARRITOS, T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_CUPONES,
-            T_PAGO_OK, T_ERROR, T_DESCONECTADO,
+            T_TARIFAS, T_PAGO_OK, T_ERROR, T_DESCONECTADO,
         )
 
         tipo = mensaje.get("type")
@@ -275,6 +278,12 @@ class RetroVaultApp:
                     self.gestor_cupones.cupones[cupon.codigo] = cupon
                 except (KeyError, TypeError, ValueError):
                     continue
+        elif tipo == T_TARIFAS and self.conexion is not None:
+            try:
+                self.gestor_tarifas.aplicar(mensaje.get("config") or {})
+                self._refrescar_carrito()
+            except (TypeError, ValueError):
+                pass
         elif tipo == T_STOCK:
             producto = self.inventario.buscar_por_id(mensaje.get("id"))
             if producto is not None:
@@ -643,6 +652,8 @@ class RetroVaultApp:
             on_cerrar_sesion=self.cerrar_sesion,
             gestor_cupones=self.gestor_cupones,
             on_cupones_cambiaron=(self.servidor.difundir_cupones if self.servidor is not None else None),
+            gestor_tarifas=self.gestor_tarifas,
+            on_tarifas_cambiaron=(self.servidor.difundir_tarifas if self.servidor is not None else None),
         )
         pantalla.pack(fill="both", expand=True)
 

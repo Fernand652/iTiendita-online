@@ -29,8 +29,10 @@ except ImportError:
         from vistas.inventario import Inventario  # compat legacy (ya eliminado)
 try:
     from persistencia.gestor_cupones import GestorCupones
+    from persistencia.gestor_tarifas import GestorTarifas
 except ImportError:
     from gestor_cupones import GestorCupones
+    from gestor_tarifas import GestorTarifas
 
 try:
     from vistas.toast import mostrar_toast
@@ -63,7 +65,7 @@ class PantallaAdmin(tk.Frame):
         on_volver:   función que se llama al hacer click en "VOLVER".
     """
 
-    def __init__(self, parent, inventario=None, carritos=None, on_volver=None, usuario_actual=None, on_cerrar_sesion=None, gestor_cupones=None, on_cupones_cambiaron=None):
+    def __init__(self, parent, inventario=None, carritos=None, on_volver=None, usuario_actual=None, on_cerrar_sesion=None, gestor_cupones=None, on_cupones_cambiaron=None, gestor_tarifas=None, on_tarifas_cambiaron=None):
         super().__init__(parent, bg=BG_DARK)
         self.inventario = inventario or Inventario()
         self.carritos = carritos if carritos is not None else {}
@@ -72,6 +74,8 @@ class PantallaAdmin(tk.Frame):
         self.on_cerrar_sesion = on_cerrar_sesion
         self.gestor_cupones = gestor_cupones or GestorCupones()
         self.on_cupones_cambiaron = on_cupones_cambiaron
+        self.gestor_tarifas = gestor_tarifas or GestorTarifas()
+        self.on_tarifas_cambiaron = on_tarifas_cambiaron
         self.id_seleccionado = None  # None = modo "crear" ; con valor = modo "editar"
         self._ruta_imagen_tmp = None  # ruta a guardar (relativa data/imagenes/xxx.png) o None
         self._origen_imagen_tmp = None  # archivo PNG origen elegido con Examinar (aún no copiado)
@@ -233,6 +237,12 @@ class PantallaAdmin(tk.Frame):
             command=self._abrir_cupones,
         ).pack(side="right", padx=(0, 8), ipadx=8, ipady=4)
 
+        tk.Button(
+            fila_vista, text="TARIFAS", font=FUENTE_NAV,
+            bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
+            command=self._abrir_tarifas,
+        ).pack(side="right", padx=(0, 8), ipadx=8, ipady=4)
+
         self._crear_reportes(panel)
 
     def _alternar_vista_carritos(self):
@@ -309,6 +319,126 @@ class PantallaAdmin(tk.Frame):
         tk.Button(formulario, text="CREAR CUPÓN", font=FUENTE_BOTON, command=crear,
                   bg=GREEN, fg=BLACK, relief="flat").pack(fill="x", ipady=6)
         refrescar()
+
+    def _abrir_tarifas(self):
+        ventana = tk.Toplevel(self)
+        ventana.title("Administrar tarifas de envío")
+        ventana.geometry("680x640")
+        ventana.configure(bg=BG_DARK)
+        cuerpo = tk.Frame(ventana, bg=BG_DARK, padx=24, pady=20)
+        cuerpo.pack(fill="both", expand=True)
+        tk.Label(cuerpo, text="TARIFAS DE ENVÍO", font=FUENTE_TITULO,
+                 bg=BG_DARK, fg=WHITE).pack(anchor="w")
+
+        config_actual = self.gestor_tarifas.config
+        tarifas = dict(config_actual.get("tarifas") or {})
+
+        contenedor_tabla = tk.Frame(cuerpo, bg=BG_DARK)
+        contenedor_tabla.pack(fill="both", expand=True, pady=12)
+        tabla = ttk.Treeview(contenedor_tabla, columns=("region", "tarifa"),
+                             show="headings", height=10)
+        tabla.heading("region", text="Región")
+        tabla.heading("tarifa", text="Tarifa")
+        tabla.column("region", width=260, anchor="w")
+        tabla.column("tarifa", width=140, anchor="e")
+        scroll = ttk.Scrollbar(contenedor_tabla, orient="vertical",
+                               command=tabla.yview)
+        tabla.configure(yscrollcommand=scroll.set)
+        tabla.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
+
+        formulario = tk.Frame(cuerpo, bg=BG_DARK)
+        formulario.pack(fill="x", pady=(0, 8))
+        tk.Label(formulario, text="Región seleccionada", font=FUENTE_CATEGORIA,
+                 bg=BG_DARK, fg=GRAY_TEXT).pack(anchor="w")
+        region_actual = tk.StringVar()
+        tk.Label(formulario, textvariable=region_actual, font=FUENTE_BODY,
+                 bg=DARK_CARD, fg=WHITE, anchor="w").pack(fill="x", pady=(0, 6))
+        tk.Label(formulario, text="Tarifa ($)", font=FUENTE_CATEGORIA,
+                 bg=BG_DARK, fg=GRAY_TEXT).pack(anchor="w")
+        entrada_tarifa = tk.Entry(formulario, font=FUENTE_BODY)
+        entrada_tarifa.pack(fill="x", pady=(0, 6))
+        tk.Button(formulario, text="ACTUALIZAR TARIFA", font=FUENTE_BOTON,
+                  bg=GRAY_BTN, fg=WHITE, relief="flat",
+                  command=lambda: actualizar_tarifa()).pack(fill="x", ipady=5,
+                                                            pady=(0, 10))
+        tk.Label(formulario, text="Envío gratis desde ($)", font=FUENTE_CATEGORIA,
+                 bg=BG_DARK, fg=GRAY_TEXT).pack(anchor="w")
+        entrada_gratis = tk.Entry(formulario, font=FUENTE_BODY)
+        entrada_gratis.pack(fill="x", pady=(0, 6))
+        entrada_gratis.insert(
+            0, str(config_actual.get("envio_gratis_desde", 100000))
+        )
+        mensaje = tk.Label(formulario, text="", font=FUENTE_BODY,
+                           bg=BG_DARK, fg="#ff6b6b")
+        mensaje.pack(anchor="w", pady=(0, 6))
+
+        def refrescar():
+            tabla.delete(*tabla.get_children())
+            for region, monto in tarifas.items():
+                tabla.insert("", "end", values=(
+                    region, f"${monto:,.0f}".replace(",", ".")
+                ))
+
+        def al_seleccionar(_evento=None):
+            seleccion = tabla.selection()
+            if not seleccion:
+                return
+            valores = tabla.item(seleccion[0], "values")
+            if not valores:
+                return
+            region_actual.set(valores[0])
+            entrada_tarifa.delete(0, tk.END)
+            entrada_tarifa.insert(0, str(tarifas.get(valores[0], 0)))
+
+        def actualizar_tarifa():
+            region = region_actual.get().strip()
+            if not region:
+                mensaje.config(text="Selecciona una región", fg="#ff6b6b")
+                return
+            try:
+                monto = int(float(entrada_tarifa.get().strip()))
+            except (TypeError, ValueError):
+                mensaje.config(text="Ingresa una tarifa válida", fg="#ff6b6b")
+                return
+            if monto < 0:
+                mensaje.config(text="La tarifa no puede ser negativa",
+                               fg="#ff6b6b")
+                return
+            tarifas[region] = monto
+            mensaje.config(text="Tarifa actualizada", fg=GREEN)
+            refrescar()
+
+        def guardar():
+            try:
+                envio_gratis = int(float(entrada_gratis.get().strip()))
+            except (TypeError, ValueError):
+                mensaje.config(text="Ingresa un monto válido para envío gratis",
+                               fg="#ff6b6b")
+                return
+            if envio_gratis < 0:
+                mensaje.config(text="El monto de envío gratis no puede ser negativo",
+                               fg="#ff6b6b")
+                return
+            try:
+                self.gestor_tarifas.guardar({
+                    "tarifas": dict(tarifas),
+                    "tarifa_resto": config_actual.get("tarifa_resto", 7990),
+                    "envio_gratis_desde": envio_gratis,
+                    "region_tienda": config_actual.get("region_tienda", "Maule"),
+                })
+            except (TypeError, ValueError) as error:
+                mensaje.config(text=str(error), fg="#ff6b6b")
+                return
+            mensaje.config(text="Tarifas guardadas", fg=GREEN)
+            if self.on_tarifas_cambiaron:
+                self.on_tarifas_cambiaron()
+
+        tabla.bind("<<TreeviewSelect>>", al_seleccionar)
+        refrescar()
+        tk.Button(formulario, text="GUARDAR TARIFAS", font=FUENTE_BOTON,
+                  command=guardar, bg=GREEN, fg=BLACK,
+                  relief="flat").pack(fill="x", ipady=6)
 
     def _configurar_columnas_inventario(self):
         encabezados = {

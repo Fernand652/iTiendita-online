@@ -23,15 +23,17 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from modelos.despacho import Despacho
 from modelos.inventario import Inventario
 from modelos.producto import Producto
+from persistencia.gestor_tarifas import GestorTarifas
 
 from red.protocolo import (
     empaquetar, desempaquetar, extraer_mensajes, normalizar_items,
     items_a_lista, carrito_a_mensaje, normalizar_items as _norm,
     T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO,
     T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK,
-    T_CARRITOS, T_ERROR,
+    T_TARIFAS, T_CARRITOS, T_ERROR,
 )
 from red import servidor as servidor_mod
 from red.servidor import ServidorCarritos
@@ -221,11 +223,16 @@ class TestServidorCarritos(unittest.TestCase):
         inventario.agregar_producto("Producto A", 1000, 3, "Cat")   # id 1
         inventario.agregar_producto("Producto B", 2000, 5, "Cat")   # id 2
         self.inventario = inventario
+        self.gestor_tarifas = GestorTarifas(
+            archivo=os.path.join(self.tempdir, "config_despacho.json")
+        )
+        Despacho.aplicar_config(Despacho.config_por_defecto())
 
         # Loopback + puerto libre por test, así no se pisan entre sí.
         self.puerto = _puerto_libre()
         self.servidor = ServidorCarritos(
-            inventario, host="127.0.0.1", puerto=self.puerto
+            inventario, host="127.0.0.1", puerto=self.puerto,
+            gestor_tarifas=self.gestor_tarifas,
         )
         self.servidor.start()
         self._esperar_arranque()
@@ -241,6 +248,12 @@ class TestServidorCarritos(unittest.TestCase):
         for cliente in self.clientes:
             cliente.cerrar()
         self.servidor.detener()
+        for _ in range(100):
+            with self.servidor._lock:
+                if not self.servidor.clientes:
+                    break
+            time.sleep(0.01)
+        Despacho.aplicar_config(Despacho.config_por_defecto())
         shutil.rmtree(self.tempdir, ignore_errors=True)
 
     # -- helpers ------------------------------------------------------
@@ -298,6 +311,23 @@ class TestServidorCarritos(unittest.TestCase):
         self.assertEqual([p["id"] for p in catalogo["productos"]], [1, 2])
         self.assertEqual(catalogo["productos"][0]["stock"], 3)
         self.assertEqual(catalogo["productos"][0]["nombre"], "Producto A")
+
+    def test_registro_recibe_tarifas(self):
+        cliente = self._cliente("ana")
+        mensaje = cliente.esperar(T_TARIFAS)
+        self.assertEqual(mensaje["config"]["tarifas"]["Maule"], 4990)
+        self.assertEqual(mensaje["config"]["envio_gratis_desde"], 100000)
+
+    def test_difundir_tarifas_actualiza_la_caja(self):
+        cliente = self._cliente("ana")
+        cliente.esperar(T_TARIFAS)
+        config = dict(self.gestor_tarifas.config)
+        config["tarifas"] = dict(config["tarifas"])
+        config["tarifas"]["Maule"] = 1234
+        self.gestor_tarifas.aplicar(config)
+        self.servidor.difundir_tarifas()
+        mensaje = cliente.esperar(T_TARIFAS)
+        self.assertEqual(mensaje["config"]["tarifas"]["Maule"], 1234)
 
     def test_agregar_al_carrito_descuenta_stock(self):
         cliente = self._cliente("ana")
