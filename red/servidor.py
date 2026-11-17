@@ -54,17 +54,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     from red.protocolo import (
         HOST, PUERTO, TAMANO_BUFFER,
-        T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO, T_PREGUNTA,
-        T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK, T_RESPUESTA,
-        T_CUPONES, T_TARIFAS, T_CARRITOS, T_ERROR,
+        T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO, T_GUARDAR_DESEO, T_SUSCRIBIR_REPOSICION,
+        T_PREGUNTA, T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK, T_RESPUESTA, T_CUPONES,
+        T_TARIFAS, T_DESEOS, T_NOTIFICACION, T_CARRITOS, T_ERROR,
         empaquetar, extraer_mensajes, normalizar_items, items_a_lista,
     )
 except ImportError:  # ejecución directa dentro de red/
     from protocolo import (
         HOST, PUERTO, TAMANO_BUFFER,
-        T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO, T_PREGUNTA,
-        T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK, T_RESPUESTA,
-        T_CUPONES, T_TARIFAS, T_CARRITOS, T_ERROR,
+        T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO, T_GUARDAR_DESEO, T_SUSCRIBIR_REPOSICION,
+        T_PREGUNTA, T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK, T_RESPUESTA, T_CUPONES,
+        T_TARIFAS, T_DESEOS, T_NOTIFICACION, T_CARRITOS, T_ERROR,
         empaquetar, extraer_mensajes, normalizar_items, items_a_lista,
     )
 
@@ -80,11 +80,15 @@ except ImportError:  # ejecución directa dentro de red/
 try:
     from modelos.despacho import Despacho
     from modelos.api_gemini import consultar_gemini
+    from modelos.lista_deseos import ListaDeseos
+    from modelos.notificacion import Notificacion
     from persistencia.gestor_cupones import GestorCupones
     from persistencia.gestor_tarifas import GestorTarifas
 except ImportError:  # ejecución directa dentro de red/
     from despacho import Despacho
     from api_gemini import consultar_gemini
+    from lista_deseos import ListaDeseos
+    from notificacion import Notificacion
     from gestor_cupones import GestorCupones
     from gestor_tarifas import GestorTarifas
 
@@ -106,6 +110,7 @@ class ServidorCarritos(threading.Thread):
         self.inventario = inventario
         self.gestor_cupones = GestorCupones()
         self.gestor_tarifas = gestor_tarifas or GestorTarifas()
+        self.lista_deseos = ListaDeseos()
         self.host = host
         self.puerto = puerto
 
@@ -133,6 +138,7 @@ class ServidorCarritos(threading.Thread):
         self._srv = None            # socket que escucha
         self._parar = threading.Event()
         self.error = None           # si el puerto está ocupado, queda el motivo
+        self._catalogo_anterior = self._catalogo_por_id()
 
     # ------------------------------------------------------------------
     # ARRANQUE Y APAGADO
@@ -242,6 +248,10 @@ class ServidorCarritos(threading.Thread):
         with self._lock:
             return [p.to_dict() for p in self.inventario.productos]
 
+    def _catalogo_por_id(self):
+        return {p.id: {"nombre": p.nombre, "precio": float(p.precio), "stock": int(p.stock)}
+                for p in self.inventario.productos}
+
     def _snapshot_carritos(self):
         """Foto de todos los carritos, lista para T_CARRITOS."""
         with self._lock:
@@ -294,6 +304,10 @@ class ServidorCarritos(threading.Thread):
                         self._procesar_pago(conexion, usuario, mensaje)
                     elif tipo == T_PREGUNTA:
                         self._procesar_pregunta(conexion, mensaje)
+                    elif tipo == T_GUARDAR_DESEO:
+                        self._procesar_deseo(conexion, usuario, mensaje)
+                    elif tipo == T_SUSCRIBIR_REPOSICION:
+                        self._procesar_deseo(conexion, usuario, mensaje, suscripcion=True)
         except (OSError, ValueError):
             # Cliente cerró la ventana o se cortó el cable. No es un error de
             # verdad, es la forma normal de terminar una conexión.
@@ -326,8 +340,19 @@ class ServidorCarritos(threading.Thread):
                      "cupones": [c.to_dict() for c in self.gestor_cupones.cupones.values()]})
         self._enviar(conexion, {"type": T_TARIFAS,
                      "config": self.gestor_tarifas.config})
+        self._enviar(conexion, {"type": T_DESEOS, **self.lista_deseos.datos_de(usuario)})
         self._difundir_carritos()
         return usuario
+
+    def _procesar_deseo(self, conexion, usuario, mensaje, suscripcion=False):
+        producto = self.inventario.buscar_por_id(mensaje.get("id"))
+        if producto is None or (suscripcion and producto.stock > 0):
+            self._enviar(conexion, {"type": T_ERROR, "mensaje": "Producto no disponible para esta acción"})
+            return
+        accion = self.lista_deseos.suscribirse if suscripcion else self.lista_deseos.guardar_favorito
+        ok, texto = accion(usuario, producto.id)
+        self._enviar(conexion, {"type": T_DESEOS, **self.lista_deseos.datos_de(usuario), "ok": ok, "mensaje": texto})
+        self.eventos.put({"type": T_DESEOS})
 
     def _procesar_carrito(self, conexion, usuario, mensaje):
         """
@@ -608,6 +633,7 @@ class ServidorCarritos(threading.Thread):
         Avisa a todos el CATÁLOGO COMPLETO. Se llama desde la ventana del
         ADMIN cuando crea, edita o elimina un producto.
         """
+        anterior, actual = self._catalogo_anterior, self._catalogo_por_id()
         mensaje = {"type": T_INVENTARIO, "productos": self._catalogo()}
         with self._lock:
             conexiones = list(self.clientes.keys())
@@ -615,7 +641,28 @@ class ServidorCarritos(threading.Thread):
             self._enviar(conexion, mensaje)
         # Y a la bandeja, para que la ventana del ADMIN recargue su tabla.
         self.eventos.put(mensaje)
+        self._notificar_cambios_catalogo(anterior, actual)
+        self._catalogo_anterior = actual
         self._difundir_carritos()
+
+    def _notificar_cambios_catalogo(self, anterior, actual):
+        with self._lock:
+            conexiones = {info.get("usuario"): c for c, info in self.clientes.items() if info.get("usuario")}
+        for pid, nuevo in actual.items():
+            viejo = anterior.get(pid)
+            if viejo is None:
+                continue
+            if viejo["stock"] <= 0 < nuevo["stock"]:
+                aviso = Notificacion("reposicion", f"{nuevo['nombre']} ya está disponible", id_producto=pid)
+                for usuario in self.lista_deseos.usuarios_suscritos(pid):
+                    if usuario in conexiones:
+                        self._enviar(conexiones[usuario], aviso.to_dict())
+            if nuevo["precio"] < viejo["precio"]:
+                texto = f"{nuevo['nombre']} bajó de ${viejo['precio']:,.0f} a ${nuevo['precio']:,.0f}"
+                aviso = Notificacion("rebaja", texto, id_producto=pid)
+                for usuario in self.lista_deseos.usuarios_con_favorito(pid):
+                    if usuario in conexiones:
+                        self._enviar(conexiones[usuario], aviso.to_dict())
 
     def difundir_cupones(self):
         """Actualiza el catálogo de cupones en cada caja conectada."""

@@ -127,7 +127,7 @@ class RetroVaultApp:
         self.inventario = inventario or (servidor.inventario if servidor is not None else Inventario())
         self.gestor_cupones = servidor.gestor_cupones if servidor is not None else GestorCupones()
         self.gestor_tarifas = servidor.gestor_tarifas if servidor is not None else GestorTarifas()
-        self.lista_deseos = ListaDeseos()
+        self.lista_deseos = servidor.lista_deseos if servidor is not None else ListaDeseos()
         # Sesión actual: nombre de usuario logueado o None (invitado)
         self.usuario_actual = None
         # Carritos por cliente: {usuario: [{'producto': Producto, 'cantidad': int}]}
@@ -248,7 +248,7 @@ class RetroVaultApp:
         """Aplica un mensaje que llegó por socket a la ventana."""
         from red.protocolo import (
             T_CARRITOS, T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_CUPONES,
-            T_TARIFAS, T_PAGO_OK, T_RESPUESTA, T_ERROR, T_DESCONECTADO,
+            T_TARIFAS, T_DESEOS, T_NOTIFICACION, T_PAGO_OK, T_RESPUESTA, T_ERROR, T_DESCONECTADO,
         )
 
         tipo = mensaje.get("type")
@@ -287,6 +287,15 @@ class RetroVaultApp:
                 self._refrescar_carrito()
             except (TypeError, ValueError):
                 pass
+        elif tipo == T_DESEOS:
+            if self.conexion is not None:
+                self.lista_deseos.reemplazar_datos(self.usuario_actual or self._id_remoto,
+                                                    mensaje.get("favoritos"), mensaje.get("suscripciones"))
+                if mensaje.get("mensaje"):
+                    _toast(self.root, mensaje["mensaje"], tipo="exito" if mensaje.get("ok") else "error")
+            self._refrescar_admin()
+        elif tipo == T_NOTIFICACION:
+            self._mostrar_notificacion(mensaje)
         elif tipo == T_STOCK:
             producto = self.inventario.buscar_por_id(mensaje.get("id"))
             if producto is not None:
@@ -312,6 +321,27 @@ class RetroVaultApp:
         elif tipo == T_ERROR:
             _toast(self.root, mensaje.get("mensaje", "Error del servidor"),
                    tipo="error")
+
+    def _mostrar_notificacion(self, mensaje):
+        texto = mensaje.get("mensaje", "Tienes una novedad en tus productos guardados")
+        _toast(self.root, texto, tipo="info")
+        if mensaje.get("tipo") != "reposicion":
+            return
+        producto = self.inventario.buscar_por_id(mensaje.get("id_producto"))
+        if producto is None or producto.stock <= 0:
+            return
+        aviso = tk.Toplevel(self.root)
+        aviso.title("Producto disponible")
+        aviso.configure(bg=BG_DARK)
+        tk.Label(aviso, text=texto, bg=BG_DARK, fg="white", padx=24, pady=18).pack()
+        tk.Button(aviso, text="AGREGAR AL CARRITO", bg="#00ff66", fg="#1a1a1a", relief="flat",
+                  command=lambda: self._agregar_desde_aviso(producto, aviso)).pack(pady=(0, 18))
+
+    def _agregar_desde_aviso(self, producto, aviso):
+        ok, texto = self._agregar_al_carrito(producto)
+        _toast(self.root, texto, tipo="exito" if ok else "error")
+        if ok:
+            aviso.destroy()
 
     def _aplicar_carrito_del_servidor(self, items):
         """Rehace el carrito local con lo que el servidor dice que quedó."""
@@ -620,11 +650,17 @@ class RetroVaultApp:
             return False, str(error)
 
     def _guardar_favorito(self, producto):
+        if self.conexion is not None and self.conexion.conectado and self.usuario_actual:
+            return ((True, "Solicitud enviada al servidor") if self.conexion.guardar_deseo(producto.id)
+                    else (False, "No se pudo guardar el producto"))
         return self._accion_deseos(self.lista_deseos.guardar_favorito, producto)
 
     def _suscribirse_reposicion(self, producto):
         if producto.stock > 0:
             return False, "Este producto ya tiene stock disponible"
+        if self.conexion is not None and self.conexion.conectado and self.usuario_actual:
+            return ((True, "Suscripción enviada al servidor") if self.conexion.suscribirse_reposicion(producto.id)
+                    else (False, "No se pudo suscribir"))
         return self._accion_deseos(self.lista_deseos.suscribirse, producto)
 
     def mostrar_lista_deseos(self):
@@ -665,6 +701,7 @@ class RetroVaultApp:
             usuario_actual=self.usuario_actual,
             on_cerrar_sesion=self.cerrar_sesion,
             gestor_cupones=self.gestor_cupones,
+            lista_deseos=self.lista_deseos,
             on_cupones_cambiaron=(self.servidor.difundir_cupones if self.servidor is not None else None),
             gestor_tarifas=self.gestor_tarifas,
             on_tarifas_cambiaron=(self.servidor.difundir_tarifas if self.servidor is not None else None),
@@ -753,3 +790,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = RetroVaultApp(root)
     root.mainloop()
+
