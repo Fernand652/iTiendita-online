@@ -1,8 +1,8 @@
 """
 chat_vista.py
 panel de chat "consultar al asistente": el cliente escribe preguntas en
-lenguaje natural sobre los productos de la tienda y la
-api de gemini (ver modelos/api_gemini.py) responde usando el catalogo real,
+lenguaje natural sobre los productos de la tienda y el servidor del admin
+(llamando a la api de gemini) responde usando el catalogo real,
 el hilo que consulta la api nunca toca la ventana. deja la respuesta en una bandeja (queue) y
 el hilo principal de tkinter la lee con after().
 """
@@ -65,13 +65,16 @@ def _toast(parent, mensaje, tipo="error"):
 
 class PantallaChat(tk.Frame):
     def __init__(self, parent, inventario=None, on_volver=None, usuario_actual=None,
-                 on_cerrar_sesion=None, on_ir_login=None):
+                 on_cerrar_sesion=None, on_ir_login=None, conexion=None):
         super().__init__(parent, bg=BG_DARK)
         self.parent = parent
         self.on_volver = on_volver
         self.usuario_actual = usuario_actual
         self.on_cerrar_sesion = on_cerrar_sesion
         self.on_ir_login = on_ir_login
+        # conexion al servidor del admin: por aca viaja la pregunta (la api
+        # key y la llamada a gemini quedan solo en el servidor)
+        self.conexion = conexion
 
         # se guarda el objeto inventario (si llego uno) para leer el
         # catalogo vigente en cada pregunta, no una copia vieja
@@ -240,15 +243,31 @@ class PantallaChat(tk.Frame):
         hilo.start()
 
     def _consultar_en_hilo(self, pregunta):
-        # cuerpo del hilo: llama a gemini. nunca toca la ventana: deja el
-        # resultado en la bandeja y el hilo principal de tk lo aplica
+        # cuerpo del hilo: si hay conexion, la pregunta viaja al servidor y
+        # es el quien llama a gemini (la api key no vive en el cliente).
+        # sin conexion (modo admin) se llama directo al modulo local.
         try:
-            texto, error = consultar_gemini(
-                pregunta, self._productos_actuales(), self.historial
-            )
+            if self.conexion is not None:
+                if (self.conexion.conectado
+                        and self.conexion.preguntar(pregunta, self.historial)):
+                    return  # la respuesta llega despues como T_RESPUESTA
+                texto, error = None, "No hay conexión con el servidor."
+            else:
+                texto, error = consultar_gemini(
+                    pregunta, self._productos_actuales(), self.historial
+                )
         except Exception as e:  # paracaidas: consultar_gemini nunca lanza
             texto, error = None, f"Error inesperado del asistente: {e}"
         self._cola_respuestas.put((pregunta, texto, error))
+
+    def recibir_respuesta(self, mensaje):
+        # la respuesta del servidor llego por el socket: se deja en la
+        # bandeja y el bombeo la muestra igual que en el modo directo
+        self._cola_respuestas.put((
+            mensaje.get("pregunta", ""),
+            mensaje.get("texto"),
+            mensaje.get("error"),
+        ))
 
     def _bombeo_respuestas(self):
         # vacia la bandeja de respuestas en el hilo principal de tkinter

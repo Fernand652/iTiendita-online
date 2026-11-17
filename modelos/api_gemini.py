@@ -8,8 +8,8 @@ real de la tienda y devuelve la respuesta para mostrarla en el chat.
 import urllib.request
 import json
 
-API_KEY = "AQ.Ab8RN6JTCg7mMVgXM4-kghXd5ffa3G5hM1FaxfGc4B7Xr6hWcg"
-MODELO = "gemini-2.5-flash"
+API_KEY = "AQ.Ab8RN6KsOFSoQubv2z7LNZKXW-hI9kJz48CIoePn8FgYWpXpKg"
+MODELO = "gemini-3.1-flash-lite"
 URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODELO}:generateContent?key={API_KEY}"
 
 
@@ -22,14 +22,18 @@ def armar_catalogo(productos):
             precio = p.get("precio")
             stock = p.get("stock")
             categoria = p.get("categoria")
+            descripcion = p.get("descripcion")
         else:
             nombre = p.nombre
             precio = p.precio
             stock = p.stock
             categoria = getattr(p, "categoria", None)
+            descripcion = getattr(p, "descripcion", None)
         linea = f"- {nombre} | ${precio} | stock: {stock}"
         if categoria:
             linea += f" | {categoria}"
+        if descripcion:
+            linea += f" | {descripcion}"
         lineas.append(linea)
     return "\n".join(lineas) or "(sin productos)"
 
@@ -39,7 +43,7 @@ def armar_instruccion(productos):
     return (
         "Eres el asistente de RetroVault, una tienda de videojuegos y consolas retro. "
         "Responde breve y amable y solo sobre los productos de la tienda. "
-        "Usa SOLO este catalogo:\n"
+        "Usa SOLO este catalogo (nombre, categoria, precio, stock y descripcion):\n"
         + armar_catalogo(productos)
     )
 

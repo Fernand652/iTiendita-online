@@ -64,6 +64,11 @@ T_PAGO = "pago"
 # {type, usuario, run?: str,
 #  despacho?: {modalidad, region, receptor, direccion, comuna}}
 
+T_PREGUNTA = "pregunta"
+# pregunta para el asistente {type, pregunta, historial}
+# el servidor (admin) es el unico que llama a gemini: la api key vive solo
+# alla y el catalogo sale del stock real de ese instante.
+
 T_CUPONES = "cupones"
 # Catálogo de cupones vigente que el ADMIN envía a cada caja cliente.
 
@@ -84,6 +89,9 @@ T_CARRITO_ESTADO = "carrito_estado"
 
 T_PAGO_OK = "pago_ok"
 # "Compra registrada" {type, total}
+
+T_RESPUESTA = "respuesta"
+# respuesta del asistente {type, pregunta, texto?, error?}
 
 T_CARRITOS = "carritos"
 # Solo para el ADMIN: "así están todos los carritos ahora mismo"

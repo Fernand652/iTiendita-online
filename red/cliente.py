@@ -37,7 +37,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     from red.protocolo import (
         HOST, PUERTO, TAMANO_BUFFER,
-        T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO,
+        T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO, T_PREGUNTA,
         T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK,
         T_ERROR, T_DESCONECTADO,
         empaquetar, extraer_mensajes, carrito_a_mensaje, normalizar_items,
@@ -46,7 +46,7 @@ try:
 except ImportError:  # ejecución directa dentro de red/
     from protocolo import (
         HOST, PUERTO, TAMANO_BUFFER,
-        T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO,
+        T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO, T_PREGUNTA,
         T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK,
         T_ERROR, T_DESCONECTADO,
         empaquetar, extraer_mensajes, carrito_a_mensaje, normalizar_items,
@@ -145,6 +145,16 @@ class ConexionServidor(threading.Thread):
         if (codigo_cupon or "").strip():
             mensaje["cupon"] = (codigo_cupon or "").strip().upper()
         return self.enviar(mensaje)
+
+    # asistente
+    def preguntar(self, pregunta, historial=None):
+        """
+        manda una pregunta para el asistente. la respuesta no vuelve por aca:
+        el servidor la manda despues como mensaje T_RESPUESTA a la bandeja.
+        """
+        return self.enviar({"type": T_PREGUNTA,
+                            "pregunta": str(pregunta),
+                            "historial": list(historial or [])})
 
     # ------------------------------------------------------------------
     # ENVÍO

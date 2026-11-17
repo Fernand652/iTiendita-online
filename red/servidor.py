@@ -54,17 +54,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     from red.protocolo import (
         HOST, PUERTO, TAMANO_BUFFER,
-        T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO,
-        T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK, T_CUPONES,
-        T_TARIFAS, T_CARRITOS, T_ERROR,
+        T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO, T_PREGUNTA,
+        T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK, T_RESPUESTA,
+        T_CUPONES, T_TARIFAS, T_CARRITOS, T_ERROR,
         empaquetar, extraer_mensajes, normalizar_items, items_a_lista,
     )
 except ImportError:  # ejecución directa dentro de red/
     from protocolo import (
         HOST, PUERTO, TAMANO_BUFFER,
-        T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO,
-        T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK, T_CUPONES,
-        T_TARIFAS, T_CARRITOS, T_ERROR,
+        T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO, T_PREGUNTA,
+        T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK, T_RESPUESTA,
+        T_CUPONES, T_TARIFAS, T_CARRITOS, T_ERROR,
         empaquetar, extraer_mensajes, normalizar_items, items_a_lista,
     )
 
@@ -79,10 +79,12 @@ except ImportError:  # ejecución directa dentro de red/
 
 try:
     from modelos.despacho import Despacho
+    from modelos.api_gemini import consultar_gemini
     from persistencia.gestor_cupones import GestorCupones
     from persistencia.gestor_tarifas import GestorTarifas
 except ImportError:  # ejecución directa dentro de red/
     from despacho import Despacho
+    from api_gemini import consultar_gemini
     from gestor_cupones import GestorCupones
     from gestor_tarifas import GestorTarifas
 
@@ -290,6 +292,8 @@ class ServidorCarritos(threading.Thread):
                         self._procesar_vaciar(conexion, usuario)
                     elif tipo == T_PAGO:
                         self._procesar_pago(conexion, usuario, mensaje)
+                    elif tipo == T_PREGUNTA:
+                        self._procesar_pregunta(conexion, mensaje)
         except (OSError, ValueError):
             # Cliente cerró la ventana o se cortó el cable. No es un error de
             # verdad, es la forma normal de terminar una conexión.
@@ -489,6 +493,23 @@ class ServidorCarritos(threading.Thread):
         if codigo_cupon:
             self.difundir_cupones()
         self._difundir_carritos()
+
+    def _procesar_pregunta(self, conexion, mensaje):
+        """
+        el cliente pregunta al asistente. la llamada a gemini se hace solo
+        aca, en el admin: la api key no viaja a las cajas cliente y el
+        catalogo es el stock real de este instante.
+        """
+        pregunta = str(mensaje.get("pregunta") or "").strip()
+        historial = mensaje.get("historial") or []
+        with self._lock:
+            productos = [p.to_dict() for p in self.inventario.productos]
+        try:
+            texto, error = consultar_gemini(pregunta, productos, historial)
+        except Exception as e:  # paracaidas: consultar_gemini nunca lanza
+            texto, error = None, f"Error inesperado del asistente: {e}"
+        self._enviar(conexion, {"type": T_RESPUESTA, "pregunta": pregunta,
+                                "texto": texto, "error": error})
 
     def _siguiente_id_venta(self, ventas):
         """Genera ID único: max(id_venta existente) + 1."""

@@ -142,6 +142,9 @@ class RetroVaultApp:
         self.servidor = servidor
         # Si somos un CLIENTE: la conexión al servidor de la otra máquina.
         self.conexion = conexion
+        # pantalla de chat abierta (o None): por aca llega la respuesta del
+        # asistente que contesta el servidor por el socket.
+        self._pantalla_chat = None
         # Identidad con la que el servidor guarda nuestro carrito mientras
         # somos invitados (todavía no hay usuario con nombre).
         self._id_remoto = self.usuario_actual or "invitado"
@@ -245,7 +248,7 @@ class RetroVaultApp:
         """Aplica un mensaje que llegó por socket a la ventana."""
         from red.protocolo import (
             T_CARRITOS, T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_CUPONES,
-            T_TARIFAS, T_PAGO_OK, T_ERROR, T_DESCONECTADO,
+            T_TARIFAS, T_PAGO_OK, T_RESPUESTA, T_ERROR, T_DESCONECTADO,
         )
 
         tipo = mensaje.get("type")
@@ -296,8 +299,16 @@ class RetroVaultApp:
         elif tipo == T_PAGO_OK:
             _toast(self.root, f"¡Compra confirmada! Total: ${mensaje.get('total', 0):,.0f}",
                    tipo="info")
+        elif tipo == T_RESPUESTA:
+            # el servidor contesto la consulta del asistente
+            if self._pantalla_chat is not None:
+                self._pantalla_chat.recibir_respuesta(mensaje)
         elif tipo == T_DESCONECTADO:
             _toast(self.root, "Se perdió la conexión con el servidor", tipo="error")
+            # si el chat estaba esperando, se le avisa para no dejarlo trabado
+            if self._pantalla_chat is not None:
+                self._pantalla_chat.recibir_respuesta(
+                    {"error": "Se perdió la conexión con el servidor."})
         elif tipo == T_ERROR:
             _toast(self.root, mensaje.get("mensaje", "Error del servidor"),
                    tipo="error")
@@ -344,6 +355,7 @@ class RetroVaultApp:
                 return
 
     def _limpiar_contenedor(self):
+        self._pantalla_chat = None
         for widget in self.contenedor.winfo_children():
             widget.destroy()
 
@@ -633,8 +645,10 @@ class RetroVaultApp:
             usuario_actual=self.usuario_actual,
             on_cerrar_sesion=self.cerrar_sesion,
             on_ir_login=lambda: self._ir_a_login_preservando_carrito(destino="principal"),
+            conexion=self.conexion,
         )
         pantalla.pack(fill="both", expand=True)
+        self._pantalla_chat = pantalla
 
     def mostrar_admin(self):
         # Gate: un usuario normal NUNCA entra al apartado admin

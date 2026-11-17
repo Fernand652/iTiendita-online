@@ -514,7 +514,8 @@ class PantallaAdmin(tk.Frame):
             self.titulo_formulario.config(text=f"Editando #{producto.id}")
             self.btn_guardar.config(text="Actualizar Producto")
             for e, v in ((self.entry_id, str(producto.id)), (self.entry_nombre, producto.nombre),
-                         (self.entry_precio, str(producto.precio)), (self.entry_stock, str(producto.stock))):
+                         (self.entry_precio, str(producto.precio)), (self.entry_stock, str(producto.stock)),
+                         (self.entry_descripcion, getattr(producto, "descripcion", "") or "")):
                 e.config(state="normal")
                 e.delete(0, tk.END)
                 e.insert(0, v)
@@ -633,6 +634,7 @@ class PantallaAdmin(tk.Frame):
             cats = []
         self.entry_categoria = ttk.Combobox(panel, font=FUENTE_BODY, values=cats)
         self.entry_categoria.pack(fill="x", ipady=2)
+        self.entry_descripcion = self._campo_texto(panel, "Descripción")
         self._campo_imagen(panel)
         self.label_error = tk.Label(panel, text="", font=(FUENTE_BODY[0], 9),
                                     bg=DARK_CARD, fg="#ff6b6b", wraplength=220, justify="left")
@@ -802,7 +804,7 @@ class PantallaAdmin(tk.Frame):
             self.label_error.config(text="El stock no puede ser negativo")
             return None
         self.label_error.config(text="")
-        return id_manual, nombre, precio, stock, categoria
+        return id_manual, nombre, precio, stock, categoria, self.entry_descripcion.get().strip()
 
     def _guardar(self):
         datos = self._leer_formulario()
@@ -810,10 +812,10 @@ class PantallaAdmin(tk.Frame):
             if self._origen_imagen_tmp:
                 _toast(self, "Corrige el formulario (foto PNG conservada)", tipo="info")
             return
-        id_manual, nombre, precio, stock, categoria = datos
+        id_manual, nombre, precio, stock, categoria, descripcion = datos
         try:
             if self.id_seleccionado is None:
-                nuevo = self.inventario.agregar_producto(nombre, precio, stock, categoria, imagen=None, id=id_manual)
+                nuevo = self.inventario.agregar_producto(nombre, precio, stock, categoria, imagen=None, id=id_manual, descripcion=descripcion)
                 ruta_rel, err = self._copiar_imagen_al_guardar(nuevo.id)
                 if err:
                     self.id_seleccionado = nuevo.id
@@ -823,7 +825,7 @@ class PantallaAdmin(tk.Frame):
                     self._refrescar_tabla()
                     return
                 if ruta_rel != nuevo.imagen:
-                    self.inventario.actualizar_producto(nuevo.id, nombre, precio, stock, categoria, imagen=ruta_rel)
+                    self.inventario.actualizar_producto(nuevo.id, nombre, precio, stock, categoria, imagen=ruta_rel, descripcion=descripcion)
                 self._ruta_imagen_tmp = ruta_rel
                 _toast(self, f"Producto '{nombre}' agregado", tipo="exito")
             else:
@@ -832,7 +834,7 @@ class PantallaAdmin(tk.Frame):
                     self.label_error.config(text=err + " (no se guardó la foto, reintenta)")
                     self._refrescar_tabla()
                     return
-                self.inventario.actualizar_producto(self.id_seleccionado, nombre, precio, stock, categoria, imagen=ruta_rel)
+                self.inventario.actualizar_producto(self.id_seleccionado, nombre, precio, stock, categoria, imagen=ruta_rel, descripcion=descripcion)
                 self._ruta_imagen_tmp = ruta_rel
                 _toast(self, f"Producto '{nombre}' actualizado", tipo="exito")
         except ValueError as e:
@@ -901,6 +903,7 @@ class PantallaAdmin(tk.Frame):
             self.entry_nombre.delete(0, tk.END)
             self.entry_precio.delete(0, tk.END)
             self.entry_stock.delete(0, tk.END)
+            self.entry_descripcion.delete(0, tk.END)
             self.entry_categoria.set("")
             self._ruta_imagen_tmp = None
             self._origen_imagen_tmp = None

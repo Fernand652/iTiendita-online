@@ -59,7 +59,7 @@ class Inventario:
         return max(p.id for p in self.productos) + 1
 
     # CRUD
-    def agregar_producto(self, nombre, precio, stock, categoria, imagen=None, id=None):
+    def agregar_producto(self, nombre, precio, stock, categoria, imagen=None, id=None, descripcion=""):
         if precio < 0:
             raise ValueError("El precio no puede ser negativo")
         if stock < 0:
@@ -74,7 +74,7 @@ class Inventario:
                 raise ValueError("El ID debe ser mayor o igual a 1")
             if self.buscar_por_id(id) is not None:
                 raise ValueError(f"Ya existe un producto con ID {id}")
-        nuevo = Producto(id, nombre, precio, stock, categoria, imagen)
+        nuevo = Producto(id, nombre, precio, stock, categoria, imagen, descripcion)
         self.productos.append(nuevo)
         self._guardar()
         return nuevo
@@ -85,7 +85,7 @@ class Inventario:
                 return p
         return None
 
-    def actualizar_producto(self, id_producto, nombre, precio, stock, categoria, imagen=None):
+    def actualizar_producto(self, id_producto, nombre, precio, stock, categoria, imagen=None, descripcion=None):
         producto = self.buscar_por_id(id_producto)
         if producto is None:
             return False
@@ -98,6 +98,8 @@ class Inventario:
         producto.stock = stock
         producto.categoria = categoria
         producto.imagen = imagen
+        if descripcion is not None:
+            producto.descripcion = descripcion
         self._guardar()
         return True
     def eliminar_producto(self, id_producto):
