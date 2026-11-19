@@ -92,6 +92,8 @@ class carrito(tk.Frame):
         # Variables Item 4: Totales e IVA
         self.subtotal_actual = 0.0
         self.descuento_actual = 0.0
+        self.tiempo_restante_segundos = 300
+        self._timer_id = None
         self.cupon_activo = None
         self.cupones = cupones if cupones is not None else {}
         self.envio_actual = 0.0
@@ -195,6 +197,12 @@ class carrito(tk.Frame):
 
         tk.Label(resumen, text="RESUMEN", font=FUENTE_TITULO, bg=DARK_CARD, fg=WHITE).pack(anchor="w", pady=(0, 8))
         tk.Frame(resumen, bg=GRAY_BTN, height=1).pack(fill="x", pady=4)
+
+        fila_timer = tk.Frame(resumen, bg=DARK_CARD)
+        fila_timer.pack(fill="x", pady=(0, 6))
+        tk.Label(fila_timer, text="Expira en:", font=FUENTE_BODY, bg=DARK_CARD, fg=GRAY_TEXT).pack(side="left")
+        self.lbl_timer = tk.Label(fila_timer, text="--:--", font=FUENTE_BODY, bg=DARK_CARD, fg="#ff6b6b")
+        self.lbl_timer.pack(side="right")
 
         # 1. Desglose Subtotal
         fila_subtotal = tk.Frame(resumen, bg=DARK_CARD)
@@ -312,6 +320,33 @@ class carrito(tk.Frame):
             self.cupon_activo = cupon if descuento else None
             self._mostrar_mensaje(motivo, tipo="exito" if descuento else "error")
         self._actualizar_totales()
+
+
+    def _iniciar_cuenta_regresiva(self):
+        """Inicia o reinicia el temporizador visual del carrito."""
+        if self._timer_id is not None:
+            try:
+                self.after_cancel(self._timer_id)
+            except Exception:
+                pass
+
+        if not self.lista_actual:
+            self.lbl_timer.config(text="--:--")
+            return
+
+        self._actualizar_reloj()
+
+    def _actualizar_reloj(self):
+        """Actualiza cada 1 segundo la etiqueta visual de cuenta regresiva."""
+        if self.tiempo_restante_segundos > 0:
+            minutos = self.tiempo_restante_segundos // 60
+            segundos = self.tiempo_restante_segundos % 60
+            self.lbl_timer.config(text=f"{minutos:02d}:{segundos:02d}")
+            self.tiempo_restante_segundos -= 1
+            self._timer_id = self.after(1000, self._actualizar_reloj)
+        else:
+            self.lbl_timer.config(text="Expirado")
+            self._mostrar_mensaje("Tu carrito ha expirado por inactividad.", tipo="error")
 
     # METODOS DE GESTIÓN DE PRODUCTOS (Requisito 1: intactos)
     def mostrar_productos(self, items):
@@ -474,6 +509,16 @@ class carrito(tk.Frame):
         for widget in self.col_izquierda.winfo_children():
             widget.destroy()
         self.mostrar_productos(productos)
+        if productos:
+            self.tiempo_restante_segundos = 5 * 60
+            self._iniciar_cuenta_regresiva()
+        else:
+            if self._timer_id is not None:
+                try:
+                    self.after_cancel(self._timer_id)
+                except Exception:
+                    pass
+            self.lbl_timer.config(text="--:--")
 
     def vacia_todo(self):
         # Vía sincronizada: restaura el stock de todo el carrito

@@ -48,6 +48,7 @@ import sys
 import queue
 import socket
 import threading
+import time 
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -118,6 +119,8 @@ class ServidorCarritos(threading.Thread):
         # Ej: {"ana": {1: 2, 5: 1}, "beto": {1: 1}}
         # Esta es la verdad: lo que dice cada cliente, ya validado contra stock.
         self.carritos = {}
+        self.carritos_timestamps = {}
+        self.tiempo_limite_carritos_minutos = 5
 
         # Conexiones vivas: {socket: {"usuario": str|None, "rol": str}}
         self.clientes = {}
@@ -178,6 +181,7 @@ class ServidorCarritos(threading.Thread):
                 try:
                     conexion, direccion = srv.accept()
                 except socket.timeout:
+                    self.verificar_carritos_expirados()
                     continue
                 except OSError:
                     break
@@ -194,6 +198,38 @@ class ServidorCarritos(threading.Thread):
                 srv.close()
             except OSError:
                 pass
+            
+
+    def verificar_carritos_expirados(self):
+        """Revisa si algún carrito superó el tiempo límite sin actividad."""
+        tiempo_actual = time.time()
+        limite_segundos = self.tiempo_limite_carritos_minutos * 60
+        usuarios_expirados = []
+
+        with self._lock:
+            for usuario, ultimo_tiempo in list(self.carritos_timestamps.items()):
+                if (tiempo_actual - ultimo_tiempo) > limite_segundos:
+                    usuarios_expirados.append(usuario)
+
+            tocados_totales = []
+            for usuario in usuarios_expirados:
+                _, tocados = self._reconciliar(usuario, {})
+                self.carritos.pop(usuario, None)
+                self.carritos_timestamps.pop(usuario, None)
+                tocados_totales.extend(tocados)
+
+        if usuarios_expirados:
+            with self._lock:
+                conexiones_por_usuario = {
+                    info.get("usuario"): conn
+                    for conn, info in self.clientes.items()
+                    if info.get("usuario") in usuarios_expirados
+                }
+            for usuario, conn in conexiones_por_usuario.items():
+                self._enviar(conn, {"type": T_CARRITO_ESTADO, "items": []})
+            self._difundir_stock(list(set(tocados_totales)))
+            self._difundir_carritos()
+
 
     def detener(self):
         """
@@ -366,6 +402,10 @@ class ServidorCarritos(threading.Thread):
         deseado = normalizar_items(mensaje.get("items") or [])
         with self._lock:
             self.carritos[usuario], tocados = self._reconciliar(usuario, deseado)
+        if self.carritos.get(usuario):
+            self.carritos_timestamps[usuario] = time.time()
+        else:
+            self.carritos_timestamps.pop(usuario, None)
 
         # Todas las cajas necesitan ver el stock real, no solo la que hizo
         # el cambio. Esto es lo que hace que funcionen como cajas de autopago.
@@ -460,6 +500,8 @@ class ServidorCarritos(threading.Thread):
         """El cliente vacía su carrito: todo el stock reservado vuelve."""
         with self._lock:
             vacio, tocados = self._reconciliar(usuario, {})
+            self.carritos_timestamps.pop(usuario, None)
+
 
         self._difundir_stock(tocados)
         self._enviar(conexion, {"type": T_CARRITO_ESTADO, "items": items_a_lista(vacio)})
@@ -510,6 +552,7 @@ class ServidorCarritos(threading.Thread):
                                 run=(mensaje or {}).get("run", ""),
                                 cupon=codigo_cupon, descuento=descuento)
             self.carritos.pop(usuario, None)
+            self.carritos_timestamps.pop(usuario, None)
 
         self._enviar(conexion, {"type": T_PAGO_OK, "total": total_final,
                                 "subtotal": subtotal, "descuento": descuento,
