@@ -94,6 +94,7 @@ class carrito(tk.Frame):
         self.descuento_actual = 0.0
         self.tiempo_restante_segundos = 300
         self._timer_id = None
+        self._aviso_un_minuto_mostrado = False
         self.cupon_activo = None
         self.cupones = cupones if cupones is not None else {}
         self.envio_actual = 0.0
@@ -339,6 +340,12 @@ class carrito(tk.Frame):
     def _actualizar_reloj(self):
         """Actualiza cada 1 segundo la etiqueta visual de cuenta regresiva."""
         if self.tiempo_restante_segundos > 0:
+            if self.tiempo_restante_segundos <= 60 and not self._aviso_un_minuto_mostrado:
+                self._aviso_un_minuto_mostrado = True
+                self._mostrar_mensaje(
+                 "Tu carrito expirará en 1 minuto por inactividad.",
+                 tipo="info"
+             )
             minutos = self.tiempo_restante_segundos // 60
             segundos = self.tiempo_restante_segundos % 60
             self.lbl_timer.config(text=f"{minutos:02d}:{segundos:02d}")
@@ -426,10 +433,14 @@ class carrito(tk.Frame):
             ok, msg = self.on_agregar(elemento["producto"])
             self._mostrar_mensaje(msg, tipo="exito" if ok else "error")
             self.actualizar_carrito(self.lista_actual)
+            if self.lista_actual:
+                self._reiniciar_temporizador()
             return
         if delta < 0 and self.on_restar is not None:
             nueva = self.on_restar(elemento)
             self.actualizar_carrito(nueva if isinstance(nueva, list) else self.lista_actual)
+            if self.lista_actual:
+                self._reiniciar_temporizador()
             return
         nueva = elemento["cantidad"] + delta
         if nueva <= 0:
@@ -437,6 +448,8 @@ class carrito(tk.Frame):
         elif nueva <= elemento["producto"].stock:
             elemento["cantidad"] = nueva
             self.actualizar_carrito(self.lista_actual)
+            if self.lista_actual:
+                self._reiniciar_temporizador()
         else:
             self._mostrar_mensaje(f"Stock máximo disponible: {elemento['producto'].stock}", tipo="error")
 
@@ -445,10 +458,14 @@ class carrito(tk.Frame):
         if self.on_eliminar is not None:
             nueva = self.on_eliminar(elemento)
             self.actualizar_carrito(nueva if isinstance(nueva, list) else self.lista_actual)
+            if self.lista_actual:
+                self._reiniciar_temporizador()
             return
         if elemento in self.lista_actual:
             self.lista_actual.remove(elemento)
             self.actualizar_carrito(self.lista_actual)
+            if self.lista_actual:
+                self._reiniciar_temporizador()
 
     def _cambio_modalidad(self):
         self._actualizar_campos_despacho()
@@ -505,21 +522,32 @@ class carrito(tk.Frame):
         self.lbl_iva.config(text=f"${iva_str}")
         self.lbl_total.config(text=f"${tot_str}")
 
+  
     def actualizar_carrito(self, productos):
         for widget in self.col_izquierda.winfo_children():
             widget.destroy()
         self.mostrar_productos(productos)
-        if productos:
-            self.tiempo_restante_segundos = 5 * 60
-            self._iniciar_cuenta_regresiva()
-        else:
+        self._reiniciar_temporizador()
+        
+
+    def _reiniciar_temporizador(self):
+        """Reinicia la cuenta regresiva de 5 minutos y el aviso de 1 minuto."""
+        if not self.lista_actual:
             if self._timer_id is not None:
                 try:
                     self.after_cancel(self._timer_id)
                 except Exception:
                     pass
+                self._timer_id = None
+            self.tiempo_restante_segundos = 300
+            self._aviso_un_minuto_mostrado = False
             self.lbl_timer.config(text="--:--")
+            return
 
+        self.tiempo_restante_segundos = 300
+        self._aviso_un_minuto_mostrado = False
+        self._iniciar_cuenta_regresiva()
+    
     def vacia_todo(self):
         # Vía sincronizada: restaura el stock de todo el carrito
         if self.on_vaciar is not None:
