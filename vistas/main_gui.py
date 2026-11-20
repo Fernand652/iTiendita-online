@@ -145,6 +145,7 @@ class RetroVaultApp:
         # pantalla de chat abierta (o None): por aca llega la respuesta del
         # asistente que contesta el servidor por el socket.
         self._pantalla_chat = None
+        self._pantalla_carrito = None
         # Identidad con la que el servidor guarda nuestro carrito mientras
         # somos invitados (todavía no hay usuario con nombre).
         self._id_remoto = self.usuario_actual or "invitado"
@@ -304,6 +305,16 @@ class RetroVaultApp:
         elif tipo == T_CARRITO_ESTADO:
             # El servidor dijo cómo quedó el carrito de verdad (no había
             # stock para todo lo que pedimos). Ajustamos la pantalla.
+            if mensaje.get("expirado"):
+                motivo = mensaje.get("mensaje") or "Tu carrito expiró por inactividad y se liberó el stock."
+                self._aplicar_carrito_del_servidor([])
+                if self._pantalla_carrito is not None:
+                    try:
+                        self._pantalla_carrito.marcar_expirado_desde_servidor(motivo)
+                    except Exception:
+                        pass
+                _toast(self.root, motivo, tipo="error")
+                return
             self._aplicar_carrito_del_servidor(mensaje.get("items") or [])
         elif tipo == T_PAGO_OK:
             _toast(self.root, f"¡Compra confirmada! Total: ${mensaje.get('total', 0):,.0f}",
@@ -386,6 +397,7 @@ class RetroVaultApp:
 
     def _limpiar_contenedor(self):
         self._pantalla_chat = None
+        self._pantalla_carrito = None
         for widget in self.contenedor.winfo_children():
             widget.destroy()
 
@@ -732,6 +744,7 @@ class RetroVaultApp:
             cupones=self.gestor_cupones.cupones,
         )
         pantalla.pack(fill="both", expand=True)
+        self._pantalla_carrito = pantalla
         pantalla.mostrar_productos(self.carrito)
 
     def _al_iniciar_sesion(self, usuario):

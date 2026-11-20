@@ -226,10 +226,15 @@ class ServidorCarritos(threading.Thread):
                     if info.get("usuario") in usuarios_expirados
                 }
             for usuario, conn in conexiones_por_usuario.items():
-                self._enviar(conn, {"type": T_CARRITO_ESTADO, "items": []})
+                self._enviar(conn, {
+                    "type": T_CARRITO_ESTADO,
+                    "items": [],
+                    "expirado": True,
+                    "mensaje": "Tu carrito expiró por inactividad y se liberó el stock.",
+                })
             self._difundir_stock(list(set(tocados_totales)))
             self._difundir_carritos()
-
+                
 
     def detener(self):
         """
@@ -487,6 +492,10 @@ class ServidorCarritos(threading.Thread):
             self.carritos[usuario] = actual
             if not actual:
                 self.carritos.pop(usuario, None)
+            if self.carritos.get(usuario):
+                self.carritos_timestamps[usuario] = time.time()
+            else:
+                self.carritos_timestamps.pop(usuario, None)
             producto = self.inventario.buscar_por_id(id_producto)
 
         self._difundir_stock([id_producto])

@@ -547,6 +547,30 @@ class carrito(tk.Frame):
         self.tiempo_restante_segundos = 300
         self._aviso_un_minuto_mostrado = False
         self._iniciar_cuenta_regresiva()
+
+
+    def marcar_expirado_desde_servidor(self, mensaje="Tu carrito expiró por inactividad y se liberó el stock."):
+        """Detiene el reloj y limpia la vista cuando el servidor expira el carrito."""
+        if self._timer_id is not None:
+            try:
+                self.after_cancel(self._timer_id)
+            except Exception:
+                pass
+            self._timer_id = None
+
+        self.tiempo_restante_segundos = 0
+        self._aviso_un_minuto_mostrado = False
+        self.lista_actual = []
+
+        for widget in self.col_izquierda.winfo_children():
+            widget.destroy()
+
+        self.mostrar_productos([])
+        self.lbl_timer.config(text="Expirado")
+        self._mostrar_mensaje(mensaje, tipo="error")
+
+
+   
     
     def vacia_todo(self):
         # Vía sincronizada: restaura el stock de todo el carrito
