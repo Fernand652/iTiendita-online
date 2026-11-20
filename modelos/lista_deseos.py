@@ -17,6 +17,24 @@ class ListaDeseos:
         datos.setdefault("suscripciones", [])
         return datos
 
+    def datos_de(self, usuario):
+        # lo que el servidor le pasa al cliente: favoritos y suscripciones
+        # no uso _datos a proposito: el invitado todavia no tiene entrada
+        # y no quiero crearla ni tirar ValueError aca
+        datos = self.usuarios.get(str(usuario or "").strip(), {})
+        return {
+            "favoritos": list(datos.get("favoritos") or []),
+            "suscripciones": list(datos.get("suscripciones") or []),
+        }
+
+    def reemplazar_datos(self, usuario, favoritos, suscripciones):
+        # el cliente copia aca lo que el servidor dice que es la verdad
+        datos = self._datos(usuario)
+        datos["favoritos"] = list(favoritos or [])
+        datos["suscripciones"] = list(suscripciones or [])
+        self._guardar()
+        return True, "Lista de deseos actualizada"
+
     def guardar_favorito(self, usuario, id_producto):
         datos = self._datos(usuario)
         if id_producto in datos["favoritos"]:
@@ -39,6 +57,18 @@ class ListaDeseos:
 
     def es_suscriptor(self, usuario, id_producto):
         return id_producto in self._datos(usuario)["suscripciones"]
+
+    def usuarios_suscritos(self, id_producto):
+        # avisamos de reposicion solo a quienes pidieron este producto
+        return [usuario for usuario, datos in self.usuarios.items()
+                if isinstance(datos, dict)
+                and id_producto in (datos.get("suscripciones") or [])]
+
+    def usuarios_con_favorito(self, id_producto):
+        # avisamos de rebajas solo a quienes lo tienen guardado
+        return [usuario for usuario, datos in self.usuarios.items()
+                if isinstance(datos, dict)
+                and id_producto in (datos.get("favoritos") or [])]
 
     def _guardar(self):
         guardar_json(RUTA_DESEOS_JSON, self.usuarios)
