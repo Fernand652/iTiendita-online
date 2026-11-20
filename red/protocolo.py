@@ -74,6 +74,14 @@ T_CUPONES = "cupones"
 
 T_TARIFAS = "tarifas"
 
+T_GUARDAR_DESEO = "guardar_deseo"
+# El cliente marca un producto como favorito.
+# {type, id}
+
+T_SUSCRIBIR_REPOSICION = "suscribir_reposicion"
+# El cliente pide aviso cuando un producto sin stock vuelva a estar disponible.
+# {type, id}
+
 # --- Los que manda el SERVIDOR ---
 T_INVENTARIO = "inventario"
 # "Este es el catálogo completo, con el stock REAL"
@@ -102,6 +110,14 @@ T_ERROR = "error"
 
 T_DESCONECTADO = "desconectado"
 # Aviso interno del cliente cuando se cae la conexión.
+
+T_DESEOS = "deseos"
+# Lista de favoritos y suscripciones del usuario conectado.
+# {type, favoritos: [...], suscripciones: [...]}
+
+T_NOTIFICACION = "notificacion"
+# Aviso de reposición o baja de precio para un cliente conectado.
+# {type, tipo, mensaje, ...}
 
 
 # ==============================================================================

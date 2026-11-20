@@ -38,6 +38,7 @@ try:
     from red.protocolo import (
         HOST, PUERTO, TAMANO_BUFFER,
         T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO, T_PREGUNTA,
+        T_GUARDAR_DESEO, T_SUSCRIBIR_REPOSICION,
         T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK,
         T_ERROR, T_DESCONECTADO,
         empaquetar, extraer_mensajes, carrito_a_mensaje, normalizar_items,
@@ -47,6 +48,7 @@ except ImportError:  # ejecución directa dentro de red/
     from protocolo import (
         HOST, PUERTO, TAMANO_BUFFER,
         T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO, T_PREGUNTA,
+        T_GUARDAR_DESEO, T_SUSCRIBIR_REPOSICION,
         T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK,
         T_ERROR, T_DESCONECTADO,
         empaquetar, extraer_mensajes, carrito_a_mensaje, normalizar_items,
@@ -155,6 +157,14 @@ class ConexionServidor(threading.Thread):
         return self.enviar({"type": T_PREGUNTA,
                             "pregunta": str(pregunta),
                             "historial": list(historial or [])})
+
+    def guardar_deseo(self, id_producto):
+        """Marca un producto como favorito en la lista del usuario."""
+        return self.enviar({"type": T_GUARDAR_DESEO, "id": int(id_producto)})
+
+    def suscribirse_reposicion(self, id_producto):
+        """Solicita un aviso cuando el producto vuelva a tener stock."""
+        return self.enviar({"type": T_SUSCRIBIR_REPOSICION, "id": int(id_producto)})
 
     # ------------------------------------------------------------------
     # ENVÍO
