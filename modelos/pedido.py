@@ -32,6 +32,29 @@ class Pedido:
                    venta.get("items") or venta.get("productos"),
                    venta.get("total"), fecha=venta.get("fecha"))
 
+    @classmethod
+    def from_dict(cls, datos):
+        if not isinstance(datos, dict) or not datos.get("id_pedido"):
+            raise ValueError("Pedido inválido")
+        return cls(datos["id_pedido"], datos.get("id_venta"),
+                   datos.get("cliente") or "Invitado", datos.get("items"),
+                   datos.get("total"),
+                   datos.get("estado") or EstadoPedido.PENDIENTE,
+                   datos.get("fecha"))
+
+    @property
+    def siguiente_estado(self):
+        if self.estado not in EstadoPedido.FLUJO:
+            return None
+        indice = EstadoPedido.FLUJO.index(self.estado)
+        if indice == len(EstadoPedido.FLUJO) - 1:
+            return None
+        return EstadoPedido.FLUJO[indice + 1]
+
+    @property
+    def puede_avanzar(self):
+        return self.siguiente_estado is not None
+
     def avanzar(self):
         if self.estado not in EstadoPedido.FLUJO:
             return False, f"El pedido está {self.estado.lower()} y no puede avanzar"

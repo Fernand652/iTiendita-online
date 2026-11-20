@@ -17,6 +17,7 @@ RAIZ_PROYECTO = Path(__file__).resolve().parent.parent
 RUTA_PRODUCTOS_JSON = RAIZ_PROYECTO / "data" / "productos.json"
 RUTA_USUARIOS_JSON = RAIZ_PROYECTO / "data" / "usuarios.json"
 RUTA_VENTAS_JSON = RAIZ_PROYECTO / "data" / "ventas.json"
+RUTA_PEDIDOS_JSON = RAIZ_PROYECTO / "data" / "pedidos.json"
 RUTA_CUPONES_JSON = RAIZ_PROYECTO / "data" / "cupones.json"
 RUTA_DESEOS_JSON = RAIZ_PROYECTO / "data" / "listas_deseos.json"
 RUTA_CONFIG_DESPACHO_JSON = RAIZ_PROYECTO / "data" / "config_despacho.json"

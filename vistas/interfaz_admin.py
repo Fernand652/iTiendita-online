@@ -68,7 +68,8 @@ class PantallaAdmin(tk.Frame):
     def __init__(self, parent, inventario=None, carritos=None, on_volver=None,
                  usuario_actual=None, on_cerrar_sesion=None, gestor_cupones=None,
                  on_cupones_cambiaron=None, gestor_tarifas=None,
-                 on_tarifas_cambiaron=None, lista_deseos=None):
+                 on_tarifas_cambiaron=None, lista_deseos=None,
+                 on_ver_pedidos=None):
         super().__init__(parent, bg=BG_DARK)
         self.inventario = inventario or Inventario()
         self.carritos = carritos if carritos is not None else {}
@@ -82,6 +83,7 @@ class PantallaAdmin(tk.Frame):
         # La recibe desde main_gui para que el panel admin comparta la misma
         # lista de deseos del servidor, aunque todavía no la muestre en tabla.
         self.lista_deseos = lista_deseos
+        self.on_ver_pedidos = on_ver_pedidos
         self.id_seleccionado = None  # None = modo "crear" ; con valor = modo "editar"
         self._ruta_imagen_tmp = None  # ruta a guardar (relativa data/imagenes/xxx.png) o None
         self._origen_imagen_tmp = None  # archivo PNG origen elegido con Examinar (aún no copiado)
@@ -236,6 +238,13 @@ class PantallaAdmin(tk.Frame):
             bg=GREEN, fg=BLACK, relief="flat", bd=0, cursor="hand2",
             command=self._abrir_todas_las_ventas,
         ).pack(side="right", padx=(0, 8), ipadx=8, ipady=4)
+
+        if self.on_ver_pedidos is not None:
+            tk.Button(
+                fila_vista, text="PEDIDOS", font=FUENTE_NAV,
+                bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
+                command=self.on_ver_pedidos,
+            ).pack(side="right", padx=(0, 8), ipadx=8, ipady=4)
 
         tk.Button(
             fila_vista, text="CUPONES", font=FUENTE_NAV,

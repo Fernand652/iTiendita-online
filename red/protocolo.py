@@ -119,6 +119,14 @@ T_NOTIFICACION = "notificacion"
 # Aviso de reposición o baja de precio para un cliente conectado.
 # {type, tipo, mensaje, ...}
 
+T_PEDIDOS = "pedidos"
+# Lista plana de pedidos (todos o del cliente, según quién pregunte).
+# {type, pedidos: [...]}
+
+T_PEDIDO_ESTADO = "pedido_estado"
+# Cambio de estado de un pedido.
+# {type, pedido: {...}}
+
 
 # ==============================================================================
 # EMPAQUETADO / DESEMPAQUETADO

@@ -167,7 +167,7 @@ class PantallaPrincipal(tk.Frame):
                            hace click en "Añadir al Carro".
     """
 
-    def __init__(self, parent, inventario=None, on_agregar_carro=None, on_ir_admin=None, on_ver_carrito=None, on_ir_explorar=None, on_ir_chat=None, on_favorito=None, on_suscribir=None, on_ver_deseos=None, usuario_actual=None, es_admin=False, on_cerrar_sesion=None, on_ir_login=None):
+    def __init__(self, parent, inventario=None, on_agregar_carro=None, on_ir_admin=None, on_ver_carrito=None, on_ir_explorar=None, on_ir_chat=None, on_favorito=None, on_suscribir=None, on_ver_deseos=None, usuario_actual=None, es_admin=False, on_cerrar_sesion=None, on_ir_login=None, on_ver_pedidos=None):
         super().__init__(parent, bg=BG_DARK)
         # Acepta tanto lista de productos como instancia de Inventario
         if inventario is None:
@@ -184,6 +184,7 @@ class PantallaPrincipal(tk.Frame):
         self.on_favorito = on_favorito
         self.on_suscribir = on_suscribir
         self.on_ver_deseos = on_ver_deseos
+        self.on_ver_pedidos = on_ver_pedidos
         self.usuario_actual = usuario_actual
         self.es_admin = bool(es_admin)
         self.on_cerrar_sesion = on_cerrar_sesion
@@ -269,6 +270,13 @@ class PantallaPrincipal(tk.Frame):
         )
         lbl_carrito.pack(side="left", padx=4)
         lbl_carrito.bind("<Button-1>", lambda e: self._abrir_carrito())
+
+        if self.usuario_actual is not None and self.on_ver_pedidos is not None:
+            pedidos = tk.Label(iconos, text="MIS PEDIDOS", font=FUENTE_NAV,
+                               bg=GRAY_BTN, fg=WHITE, padx=10, pady=6,
+                               cursor="hand2")
+            pedidos.pack(side="left", padx=4)
+            pedidos.bind("<Button-1>", lambda e: self.on_ver_pedidos())
 
         if self.usuario_actual is not None and self.on_ver_deseos is not None:
             deseos = tk.Label(iconos, text="♡ DESEOS", font=FUENTE_NAV,

@@ -58,6 +58,7 @@ try:
         T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO, T_GUARDAR_DESEO, T_SUSCRIBIR_REPOSICION,
         T_PREGUNTA, T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK, T_RESPUESTA, T_CUPONES,
         T_TARIFAS, T_DESEOS, T_NOTIFICACION, T_CARRITOS, T_ERROR,
+        T_PEDIDOS, T_PEDIDO_ESTADO,
         empaquetar, extraer_mensajes, normalizar_items, items_a_lista,
     )
 except ImportError:  # ejecución directa dentro de red/
@@ -66,6 +67,7 @@ except ImportError:  # ejecución directa dentro de red/
         T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO, T_GUARDAR_DESEO, T_SUSCRIBIR_REPOSICION,
         T_PREGUNTA, T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK, T_RESPUESTA, T_CUPONES,
         T_TARIFAS, T_DESEOS, T_NOTIFICACION, T_CARRITOS, T_ERROR,
+        T_PEDIDOS, T_PEDIDO_ESTADO,
         empaquetar, extraer_mensajes, normalizar_items, items_a_lista,
     )
 
@@ -85,6 +87,7 @@ try:
     from modelos.notificacion import Notificacion
     from persistencia.gestor_cupones import GestorCupones
     from persistencia.gestor_tarifas import GestorTarifas
+    from persistencia.gestor_pedidos import GestorPedidos
 except ImportError:  # ejecución directa dentro de red/
     from despacho import Despacho
     from api_gemini import consultar_gemini
@@ -92,6 +95,7 @@ except ImportError:  # ejecución directa dentro de red/
     from notificacion import Notificacion
     from gestor_cupones import GestorCupones
     from gestor_tarifas import GestorTarifas
+    from gestor_pedidos import GestorPedidos
 
 # Cada cuánto revisamos el accept() para ver si hay que apagar el servidor.
 TIMEOUT_ACCEPT = 0.5
@@ -106,11 +110,13 @@ class ServidorCarritos(threading.Thread):
     se bloquea.
     """
 
-    def __init__(self, inventario, host=HOST, puerto=PUERTO, gestor_tarifas=None):
+    def __init__(self, inventario, host=HOST, puerto=PUERTO, gestor_tarifas=None,
+                 gestor_pedidos=None):
         super().__init__(daemon=True)
         self.inventario = inventario
         self.gestor_cupones = GestorCupones()
         self.gestor_tarifas = gestor_tarifas or GestorTarifas()
+        self.gestor_pedidos = gestor_pedidos or GestorPedidos()
         self.lista_deseos = ListaDeseos()
         self.host = host
         self.puerto = puerto
@@ -382,6 +388,8 @@ class ServidorCarritos(threading.Thread):
         self._enviar(conexion, {"type": T_TARIFAS,
                      "config": self.gestor_tarifas.config})
         self._enviar(conexion, {"type": T_DESEOS, **self.lista_deseos.datos_de(usuario)})
+        self._enviar(conexion, {"type": T_PEDIDOS,
+                     "pedidos": self.gestor_pedidos.de_cliente(usuario)})
         self._difundir_carritos()
         return usuario
 
@@ -557,16 +565,24 @@ class ServidorCarritos(threading.Thread):
             subtotal_neto = subtotal - descuento
             iva = (subtotal_neto + envio) * 0.19
             total_final = subtotal_neto + iva + envio
-            self._guardar_venta(usuario, detalle, subtotal, envio, despacho,
-                                run=(mensaje or {}).get("run", ""),
-                                cupon=codigo_cupon, descuento=descuento)
+            venta = self._guardar_venta(usuario, detalle, subtotal, envio, despacho,
+                                        run=(mensaje or {}).get("run", ""),
+                                        cupon=codigo_cupon, descuento=descuento)
+            if venta is None:
+                self._enviar(conexion, {"type": T_ERROR,
+                                        "mensaje": "No se pudo registrar la venta"})
+                return
+            pedido = self.gestor_pedidos.crear_desde_venta(venta)
             self.carritos.pop(usuario, None)
             self.carritos_timestamps.pop(usuario, None)
 
         self._enviar(conexion, {"type": T_PAGO_OK, "total": total_final,
                                 "subtotal": subtotal, "descuento": descuento,
-                                "envio": envio, "iva": iva})
+                                "envio": envio, "iva": iva,
+                                "id_pedido": pedido["id_pedido"],
+                                "estado": pedido["estado"]})
         self._enviar(conexion, {"type": T_CARRITO_ESTADO, "items": []})
+        self._difundir_pedidos(usuario)
         if codigo_cupon:
             self.difundir_cupones()
         self._difundir_carritos()
@@ -618,15 +634,16 @@ class ServidorCarritos(threading.Thread):
             ventas = cargar_json(str(RUTA_VENTAS_JSON), default=[]) or []
             id_venta = self._siguiente_id_venta(ventas)
             despacho_dict = despacho.to_dict() if despacho is not None else Despacho().to_dict()
-            ventas.append({
+            venta = {
                 "id_venta": id_venta, "cliente": usuario, "run": (run or "").strip(),
                 "fecha": fecha, "items": detalle, "subtotal": subtotal,
                 "cupon": cupon or None, "descuento": descuento,
                 "subtotal_neto": subtotal_neto, "envio": envio,
                 "despacho": despacho_dict, "iva": iva, "total": total_final,
-            })
+            }
+            ventas.append(venta)
             guardar_json(str(RUTA_VENTAS_JSON), ventas)
-            return id_venta
+            return venta
         except Exception:
             return None   # que un problema de disco no tumbe la venta
 
@@ -751,6 +768,39 @@ class ServidorCarritos(threading.Thread):
                 if info.get("rol") == "admin"
             ]
         for conexion in conexiones_admin:
+            self._enviar(conexion, mensaje)
+
+    # ------------------------------------------------------------------
+    # PEDIDOS: creación, avance de estado y difusión
+    # ------------------------------------------------------------------
+    def avanzar_pedido(self, id_pedido):
+        ok, mensaje, pedido = self.gestor_pedidos.avanzar(id_pedido)
+        if ok and pedido is not None:
+            self._difundir_pedido_estado(pedido)
+            self.eventos.put({"type": T_PEDIDO_ESTADO, "pedido": pedido})
+        return ok, mensaje, pedido
+
+    def _difundir_pedidos(self, usuario):
+        pedidos = self.gestor_pedidos.de_cliente(usuario)
+        mensaje = {"type": T_PEDIDOS, "pedidos": pedidos}
+        with self._lock:
+            conexiones = [
+                conexion for conexion, info in self.clientes.items()
+                if info.get("usuario") == usuario
+            ]
+        for conexion in conexiones:
+            self._enviar(conexion, mensaje)
+
+    def _difundir_pedido_estado(self, pedido):
+        if not isinstance(pedido, dict):
+            return
+        mensaje = {"type": T_PEDIDO_ESTADO, "pedido": pedido}
+        with self._lock:
+            conexiones = [
+                conexion for conexion, info in self.clientes.items()
+                if info.get("usuario") == pedido.get("cliente")
+            ]
+        for conexion in conexiones:
             self._enviar(conexion, mensaje)
 
 

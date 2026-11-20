@@ -37,8 +37,10 @@ try:
     from vistas.interfaz_admin import PantallaAdmin
     from vistas.carrito_vista import carrito as PantallaCarrito
     from vistas.lista_deseos_vista import PantallaListaDeseos
+    from vistas.pedidos_vista import PantallaPedidos, abrir_ventana_pedidos
     from vistas.toast import mostrar_toast
     from persistencia.gestor_tarifas import GestorTarifas
+    from persistencia.gestor_pedidos import GestorPedidos
     from modelos.usuario import GestorUsuarios
     from modelos.inventario import Inventario
     from modelos.producto import Producto
@@ -64,11 +66,13 @@ except ImportError:  # fallback cuando se ejecuta con cwd=vistas/
     from interfaz_admin import PantallaAdmin
     from carrito_vista import carrito as PantallaCarrito
     from lista_deseos_vista import PantallaListaDeseos
+    from pedidos_vista import PantallaPedidos, abrir_ventana_pedidos
     try:
         from toast import mostrar_toast
     except ImportError:
         mostrar_toast = None
     from persistencia.gestor_tarifas import GestorTarifas
+    from persistencia.gestor_pedidos import GestorPedidos
     from modelos.usuario import GestorUsuarios
     from modelos.inventario import Inventario
     from modelos.producto import Producto
@@ -128,6 +132,16 @@ class RetroVaultApp:
         self.gestor_cupones = servidor.gestor_cupones if servidor is not None else GestorCupones()
         self.gestor_tarifas = servidor.gestor_tarifas if servidor is not None else GestorTarifas()
         self.lista_deseos = servidor.lista_deseos if servidor is not None else ListaDeseos()
+        # Pedidos: la caja ADMIN comparte el gestor del servidor; la caja
+        # cliente (sin servidor local) usa el suyo. Con conexión remota los
+        # pedidos llegan por socket y se guardan en pedidos_remotos.
+        if servidor is not None:
+            self.gestor_pedidos = servidor.gestor_pedidos
+        elif conexion is not None:
+            self.gestor_pedidos = None
+        else:
+            self.gestor_pedidos = GestorPedidos()
+        self.pedidos_remotos = []
         # Sesión actual: nombre de usuario logueado o None (invitado)
         self.usuario_actual = None
         # Carritos por cliente: {usuario: [{'producto': Producto, 'cantidad': int}]}
@@ -249,7 +263,8 @@ class RetroVaultApp:
         """Aplica un mensaje que llegó por socket a la ventana."""
         from red.protocolo import (
             T_CARRITOS, T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_CUPONES,
-            T_TARIFAS, T_DESEOS, T_NOTIFICACION, T_PAGO_OK, T_RESPUESTA, T_ERROR, T_DESCONECTADO,
+            T_TARIFAS, T_DESEOS, T_NOTIFICACION, T_PAGO_OK, T_PEDIDOS,
+            T_PEDIDO_ESTADO, T_RESPUESTA, T_ERROR, T_DESCONECTADO,
         )
 
         tipo = mensaje.get("type")
@@ -317,8 +332,23 @@ class RetroVaultApp:
                 return
             self._aplicar_carrito_del_servidor(mensaje.get("items") or [])
         elif tipo == T_PAGO_OK:
-            _toast(self.root, f"¡Compra confirmada! Total: ${mensaje.get('total', 0):,.0f}",
-                   tipo="info")
+            detalle = f"¡Compra confirmada! Total: ${mensaje.get('total', 0):,.0f}"
+            if mensaje.get("id_pedido"):
+                detalle += (f" | Pedido {mensaje['id_pedido']} "
+                            f"({mensaje.get('estado', '')})")
+            _toast(self.root, detalle, tipo="info")
+        elif tipo == T_PEDIDOS and self.conexion is not None:
+            self.pedidos_remotos = list(mensaje.get("pedidos") or [])
+            self._refrescar_pedidos()
+        elif tipo == T_PEDIDO_ESTADO and self.conexion is not None:
+            pedido = mensaje.get("pedido")
+            if isinstance(pedido, dict) and pedido.get("id_pedido"):
+                self.pedidos_remotos = [
+                    p for p in self.pedidos_remotos
+                    if p.get("id_pedido") != pedido["id_pedido"]
+                ]
+                self.pedidos_remotos.append(pedido)
+                self._refrescar_pedidos()
         elif tipo == T_RESPUESTA:
             # el servidor contesto la consulta del asistente
             if self._pantalla_chat is not None:
@@ -379,6 +409,15 @@ class RetroVaultApp:
             if mostrar is not None:
                 mostrar(self.carrito)
 
+    def _refrescar_pedidos(self):
+        """Redibuja la pantalla de pedidos que esté visible, si hay una."""
+        for hijo in self.contenedor.winfo_children():
+            if getattr(hijo, "_es_pantalla_pedidos", False):
+                try:
+                    hijo.refrescar()
+                except Exception:
+                    pass
+
     def _refrescar_todas(self):
         """
         Redibuja la pantalla de catálogo que esté visible, si tiene refrescar().
@@ -411,6 +450,7 @@ class RetroVaultApp:
         # reservado; no se vacía ni se devuelve. Se arranca carrito invitado nuevo.
         self.usuario_actual = None
         self.carrito = []
+        self.pedidos_remotos = []
         self._destino_post_login = "principal"
         # Volvemos a ser invitados: el carrito siguiente solo es local hasta
         # que se inicie sesión otra vez.
@@ -524,31 +564,32 @@ class RetroVaultApp:
         total=subtotal_neto+iva+envio
         ventas = cargar_json(str(RUTA_VENTAS_JSON), default=[]) or []
         id_venta = self._siguiente_id_venta(ventas)
-        ventas.append(
-            {
-                "id_venta": id_venta,
-                "cliente": self.usuario_actual,
-                "run": (run or "").strip(),
-                "fecha": fecha,
-                "items": items,
-                "subtotal": subtotal,
-                "cupon": cupon or None,
-                "descuento": descuento,
-                "subtotal_neto": subtotal_neto,
-                "envio": envio,
-                "despacho": despacho_obj.to_dict(),
-                "iva": iva,
-                "total": total,
-            }
-        )
+        venta = {
+            "id_venta": id_venta,
+            "cliente": self.usuario_actual,
+            "run": (run or "").strip(),
+            "fecha": fecha,
+            "items": items,
+            "subtotal": subtotal,
+            "cupon": cupon or None,
+            "descuento": descuento,
+            "subtotal_neto": subtotal_neto,
+            "envio": envio,
+            "despacho": despacho_obj.to_dict(),
+            "iva": iva,
+            "total": total,
+        }
+        ventas.append(venta)
         guardar_json(str(RUTA_VENTAS_JSON), ventas)
-        return id_venta
+        return venta
 
     def _confirmar_pago(self, run=None, despacho=None, codigo_cupon=None):
         """Confirma la venta: la registra y vacía SIN devolver stock."""
         if not self.carrito:
             return False
-        if self.conexion is not None and self.conexion.conectado:
+        if self.conexion is not None:
+            if not self.conexion.conectado:
+                return False, "Sin conexión con el servidor"
             # Con sockets el SERVER es quien cobra y descuenta. El despacho
             # viaja en el mismo mensaje para que la venta quede completa.
             try:
@@ -566,9 +607,15 @@ class RetroVaultApp:
             if not ok:
                 _toast(self.root, mensaje, tipo="error")
                 return False, mensaje
-        self._registrar_venta(run, despacho, codigo_cupon, descuento)
+        venta = self._registrar_venta(run, despacho, codigo_cupon, descuento)
+        if venta is None:
+            return False, "No se pudo registrar la venta"
+        try:
+            pedido = self.gestor_pedidos.crear_desde_venta(venta)
+        except (OSError, TypeError, ValueError):
+            return False, "La venta se registró, pero no se pudo crear el pedido"
         self.carrito.clear()
-        return True, "Venta registrada para el ADMIN"
+        return True, f"Pedido {pedido['id_pedido']} creado ({pedido['estado']})"
     # navegacion entre las 6 pantallas
     def _requiere_sesion(self):
         """Gate anti-invitado: sin sesión vuelve al login con aviso."""
@@ -628,6 +675,7 @@ class RetroVaultApp:
             on_favorito=self._guardar_favorito,
             on_suscribir=self._suscribirse_reposicion,
             on_ver_deseos=self.mostrar_lista_deseos,
+            on_ver_pedidos=self.mostrar_mis_pedidos,
             usuario_actual=self.usuario_actual,
             es_admin=self._es_admin(),
             on_cerrar_sesion=self.cerrar_sesion,
@@ -684,6 +732,42 @@ class RetroVaultApp:
                             self.usuario_actual, on_volver=self.mostrar_principal,
                             on_agregar_carro=self._agregar_al_carrito).pack(fill="both", expand=True)
 
+    def _pedidos_para_cliente(self):
+        """Pedidos que debe ver el cliente: los del socket o los locales."""
+        if self.conexion is not None:
+            return list(self.pedidos_remotos)
+        if self.gestor_pedidos is None:
+            return []
+        return self.gestor_pedidos.de_cliente(self.usuario_actual)
+
+    def mostrar_mis_pedidos(self):
+        if not self._requiere_sesion():
+            return
+        self._limpiar_contenedor()
+        pantalla = PantallaPedidos(
+            self.contenedor,
+            self._pedidos_para_cliente,
+            "cliente",
+            on_volver=self.mostrar_principal,
+        )
+        pantalla.pack(fill="both", expand=True)
+
+    def _abrir_pedidos_admin(self):
+        if self.gestor_pedidos is None:
+            _toast(self.root, "Los pedidos no están disponibles en esta caja",
+                   tipo="error")
+            return
+        abrir_ventana_pedidos(self.contenedor,
+                              self.gestor_pedidos.todos,
+                              self._avanzar_pedido)
+
+    def _avanzar_pedido(self, id_pedido):
+        if self.servidor is not None:
+            return self.servidor.avanzar_pedido(id_pedido)
+        if self.gestor_pedidos is not None:
+            return self.gestor_pedidos.avanzar(id_pedido)
+        return False, "Pedidos no disponibles", None
+
     def mostrar_chat(self):
         self._limpiar_contenedor()
         consultar_local = None
@@ -722,6 +806,7 @@ class RetroVaultApp:
             on_cupones_cambiaron=(self.servidor.difundir_cupones if self.servidor is not None else None),
             gestor_tarifas=self.gestor_tarifas,
             on_tarifas_cambiaron=(self.servidor.difundir_tarifas if self.servidor is not None else None),
+            on_ver_pedidos=self._abrir_pedidos_admin,
         )
         pantalla.pack(fill="both", expand=True)
 
