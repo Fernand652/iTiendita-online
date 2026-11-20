@@ -65,7 +65,10 @@ class PantallaAdmin(tk.Frame):
         on_volver:   función que se llama al hacer click en "VOLVER".
     """
 
-    def __init__(self, parent, inventario=None, carritos=None, on_volver=None, usuario_actual=None, on_cerrar_sesion=None, gestor_cupones=None, on_cupones_cambiaron=None, gestor_tarifas=None, on_tarifas_cambiaron=None):
+    def __init__(self, parent, inventario=None, carritos=None, on_volver=None,
+                 usuario_actual=None, on_cerrar_sesion=None, gestor_cupones=None,
+                 on_cupones_cambiaron=None, gestor_tarifas=None,
+                 on_tarifas_cambiaron=None, lista_deseos=None):
         super().__init__(parent, bg=BG_DARK)
         self.inventario = inventario or Inventario()
         self.carritos = carritos if carritos is not None else {}
@@ -76,6 +79,9 @@ class PantallaAdmin(tk.Frame):
         self.on_cupones_cambiaron = on_cupones_cambiaron
         self.gestor_tarifas = gestor_tarifas or GestorTarifas()
         self.on_tarifas_cambiaron = on_tarifas_cambiaron
+        # La recibe desde main_gui para que el panel admin comparta la misma
+        # lista de deseos del servidor, aunque todavía no la muestre en tabla.
+        self.lista_deseos = lista_deseos
         self.id_seleccionado = None  # None = modo "crear" ; con valor = modo "editar"
         self._ruta_imagen_tmp = None  # ruta a guardar (relativa data/imagenes/xxx.png) o None
         self._origen_imagen_tmp = None  # archivo PNG origen elegido con Examinar (aún no copiado)
