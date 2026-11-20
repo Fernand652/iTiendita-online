@@ -45,15 +45,6 @@ except ImportError:
     except ImportError:
         mostrar_toast = None
 
-try:
-    from modelos.api_gemini import consultar_gemini
-except ImportError:
-    try:
-        from api_gemini import consultar_gemini
-    except ImportError:
-        consultar_gemini = None
-
-
 def _toast(parent, mensaje, tipo="error"):
     if mostrar_toast is None:
         return
@@ -65,7 +56,8 @@ def _toast(parent, mensaje, tipo="error"):
 
 class PantallaChat(tk.Frame):
     def __init__(self, parent, inventario=None, on_volver=None, usuario_actual=None,
-                 on_cerrar_sesion=None, on_ir_login=None, conexion=None):
+                 on_cerrar_sesion=None, on_ir_login=None, conexion=None,
+                 consultar_local=None):
         super().__init__(parent, bg=BG_DARK)
         self.parent = parent
         self.on_volver = on_volver
@@ -75,6 +67,7 @@ class PantallaChat(tk.Frame):
         # conexion al servidor del admin: por aca viaja la pregunta (la api
         # key y la llamada a gemini quedan solo en el servidor)
         self.conexion = conexion
+        self._consultar_local = consultar_local
 
         # se guarda el objeto inventario (si llego uno) para leer el
         # catalogo vigente en cada pregunta, no una copia vieja
@@ -149,18 +142,11 @@ class PantallaChat(tk.Frame):
         self.chat_area.pack(fill="both", expand=True)
         self.chat_area.config(state=tk.DISABLED)
 
-        if consultar_gemini is None:
-            self._agregar_mensaje(
-                "Asistente",
-                "El módulo del asistente no está disponible "
-                "(falta modelos/api_gemini.py)."
-            )
-        else:
-            self._agregar_mensaje(
-                "Asistente",
-                "Hola! Puedo ayudarte a consultar sobre nuestros productos. "
-                "¿Qué deseas saber?"
-            )
+        self._agregar_mensaje(
+            "Asistente",
+            "Hola! Puedo ayudarte a consultar sobre nuestros productos. "
+            "Que deseas saber?"
+        )
 
         entrada_frame = tk.Frame(cuerpo, bg=BG_DARK)
         entrada_frame.pack(fill="x", pady=(15, 0))
@@ -219,13 +205,6 @@ class PantallaChat(tk.Frame):
         pregunta = self.entrada.get().strip()
         if not pregunta or self._consultando:
             return
-        if consultar_gemini is None:
-            self._agregar_mensaje(
-                "Asistente",
-                "El módulo del asistente no está disponible "
-                "(falta modelos/api_gemini.py)."
-            )
-            return
 
         self._agregar_mensaje("Tú", pregunta)
         self.entrada.delete(0, tk.END)
@@ -247,16 +226,16 @@ class PantallaChat(tk.Frame):
         # es el quien llama a gemini (la api key no vive en el cliente).
         # sin conexion (modo admin) se llama directo al modulo local.
         try:
-            if self.conexion is not None:
-                if (self.conexion.conectado
-                        and self.conexion.preguntar(pregunta, self.historial)):
-                    return  # la respuesta llega despues como T_RESPUESTA
-                texto, error = None, "No hay conexión con el servidor."
-            else:
-                texto, error = consultar_gemini(
+            if (self.conexion is not None and self.conexion.conectado
+                    and self.conexion.preguntar(pregunta, self.historial)):
+                return  # la respuesta llega despues como T_RESPUESTA
+            if self._consultar_local is not None:
+                texto, error = self._consultar_local(
                     pregunta, self._productos_actuales(), self.historial
                 )
-        except Exception as e:  # paracaidas: consultar_gemini nunca lanza
+            else:
+                texto, error = None, "El asistente requiere conexion con el ADMIN."
+        except Exception as e:  # paracaidas: nunca deja caer la ventana
             texto, error = None, f"Error inesperado del asistente: {e}"
         self._cola_respuestas.put((pregunta, texto, error))
 

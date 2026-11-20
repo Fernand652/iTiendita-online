@@ -674,6 +674,10 @@ class RetroVaultApp:
 
     def mostrar_chat(self):
         self._limpiar_contenedor()
+        consultar_local = None
+        if self.servidor is not None and self.conexion is None:
+            from modelos.api_gemini import consultar_gemini
+            consultar_local = consultar_gemini
         pantalla = PantallaChat(
             self.contenedor,
             inventario=self.inventario,
@@ -682,6 +686,7 @@ class RetroVaultApp:
             on_cerrar_sesion=self.cerrar_sesion,
             on_ir_login=lambda: self._ir_a_login_preservando_carrito(destino="principal"),
             conexion=self.conexion,
+            consultar_local=consultar_local,
         )
         pantalla.pack(fill="both", expand=True)
         self._pantalla_chat = pantalla
