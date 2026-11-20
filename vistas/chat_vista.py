@@ -14,7 +14,7 @@ import threading
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import scrolledtext, ttk
 
 try:
     from vistas.estilos import *
@@ -119,7 +119,7 @@ class PantallaChat(tk.Frame):
 
         nombre = self.usuario_actual or "Invitado"
         tk.Label(
-            barra, text=f"👤 {nombre}", font=FUENTE_NAV,
+            barra, text=nombre, font=FUENTE_NAV,
             bg=BG_DARK, fg=GRAY_TEXT, padx=8, pady=8,
         ).pack(side="right", padx=(0, 10))
 
@@ -131,16 +131,50 @@ class PantallaChat(tk.Frame):
         tk.Label(cuerpo, text="Escribe preguntas en lenguaje natural sobre características, comparaciones, recomendaciones, disponibilidad o rangos de precio.",
                  font=FUENTE_BODY, bg=BG_DARK, fg=GRAY_TEXT).pack(anchor="w", pady=(0, 20))
 
-        chat_frame = tk.Frame(cuerpo, bg=DARK_CARD)
-        chat_frame.pack(fill="both", expand=True)
+        # Dos pestañas: la conversación normal y el historial que se le
+        # manda al asistente para entender preguntas de seguimiento.
+        cuaderno = ttk.Notebook(cuerpo)
+        cuaderno.pack(fill="both", expand=True)
+        self._cuaderno = cuaderno
+
+        estilo = ttk.Style()
+        estilo.theme_use("clam")
+        estilo.configure("TNotebook", background=BG_DARK, borderwidth=0)
+        estilo.configure("TNotebook.Tab", background=GRAY_BTN,
+                         foreground=WHITE, font=FUENTE_NAV, padding=(14, 6))
+        estilo.map("TNotebook.Tab",
+                   background=[("selected", GREEN)],
+                   foreground=[("selected", BLACK)])
+
+        tab_chat = tk.Frame(cuaderno, bg=DARK_CARD)
+        cuaderno.add(tab_chat, text="CONVERSACIÓN")
 
         self.chat_area = scrolledtext.ScrolledText(
-            chat_frame, wrap=tk.WORD, font=FUENTE_BODY,
+            tab_chat, wrap=tk.WORD, font=FUENTE_BODY,
             bg=DARK_CARD, fg=WHITE, insertbackground=WHITE,
             relief="flat", bd=0, padx=20, pady=20
         )
         self.chat_area.pack(fill="both", expand=True)
         self.chat_area.config(state=tk.DISABLED)
+
+        tab_historial = tk.Frame(cuaderno, bg=DARK_CARD)
+        cuaderno.add(tab_historial, text="HISTORIAL")
+        self._tab_historial = tab_historial
+
+        tk.Label(
+            tab_historial,
+            text="Últimos mensajes de la sesión. El asistente los usa para entender seguidas.",
+            font=FUENTE_BODY, bg=DARK_CARD, fg=GRAY_TEXT,
+            anchor="w", justify="left",
+        ).pack(fill="x", padx=20, pady=(16, 6))
+
+        self.historial_area = scrolledtext.ScrolledText(
+            tab_historial, wrap=tk.WORD, font=FUENTE_BODY,
+            bg=DARK_CARD, fg=WHITE, insertbackground=WHITE,
+            relief="flat", bd=0, padx=20, pady=10
+        )
+        self.historial_area.pack(fill="both", expand=True)
+        self.historial_area.config(state=tk.DISABLED)
 
         self._agregar_mensaje(
             "Asistente",
@@ -158,12 +192,23 @@ class PantallaChat(tk.Frame):
         self.entrada.pack(side="left", fill="x", expand=True, ipady=10, padx=(0, 10))
         self.entrada.bind("<Return>", lambda e: self._enviar_mensaje())
 
+        self.btn_historial = tk.Button(
+            entrada_frame, text="HISTORIAL", font=FUENTE_NAV,
+            bg=GRAY_BTN, fg=WHITE, activebackground=GREEN_HOVER,
+            relief="flat", bd=0, cursor="hand2", command=self._mostrar_historial
+        )
+        self.btn_historial.pack(side="right", ipadx=12, ipady=10, padx=(0, 8))
+
         self.btn_enviar = tk.Button(
             entrada_frame, text="ENVIAR", font=FUENTE_BOTON,
             bg=GREEN, fg=BLACK, activebackground=GREEN_HOVER,
             relief="flat", bd=0, cursor="hand2", command=self._enviar_mensaje
         )
         self.btn_enviar.pack(side="right", ipadx=20, ipady=10)
+
+        # Si venimos de otra pantalla, el historial ya tiene mensajes: los
+        # mostramos en la pestaña apenas se arma la interfaz.
+        self._refrescar_historial()
 
     def _agregar_mensaje(self, remitente, mensaje):
         # retorna la marca (posicion) donde empieza, por si despues hay que
@@ -182,6 +227,36 @@ class PantallaChat(tk.Frame):
         self.chat_area.insert(tk.END, f"[{remitente}]: {mensaje}\n\n")
         self.chat_area.config(state=tk.DISABLED)
         self.chat_area.see(tk.END)
+
+    def _mostrar_historial(self):
+        """El botón HISTORIAL lleva a la pestaña del mismo nombre."""
+        self._cuaderno.select(self._tab_historial)
+
+    def _refrescar_historial(self):
+        """Vuelca el historial en la pestaña de solo lectura."""
+        try:
+            self.historial_area.config(state=tk.NORMAL)
+            self.historial_area.delete("1.0", tk.END)
+            if not self.historial:
+                self.historial_area.insert(
+                    tk.END,
+                    "Todavía no hay mensajes. Lo que preguntes y te responda "
+                    "aparecerá acá para dar contexto a la próxima consulta.\n"
+                )
+            else:
+                nombres = {"user": "Tú", "model": "Asistente"}
+                for numero, turno in enumerate(self.historial, 1):
+                    texto = "".join(
+                        p.get("text", "") for p in turno.get("parts", [])
+                    )
+                    remitente = nombres.get(turno.get("role"), "Asistente")
+                    self.historial_area.insert(
+                        tk.END, f"{numero:02d}. [{remitente}] {texto}\n\n"
+                    )
+            self.historial_area.config(state=tk.DISABLED)
+            self.historial_area.see(tk.END)
+        except tk.TclError:
+            pass  # la ventana ya se cerró
 
     def _bloquear_entrada(self, bloqueado):
         # bloquea el input mientras se espera la respuesta de gemini
@@ -272,9 +347,9 @@ class PantallaChat(tk.Frame):
 
         if error:
             if marca is not None:
-                self._reemplazar_desde(marca, "Asistente", f"⚠ {error}")
+                self._reemplazar_desde(marca, "Asistente", f"error: {error}")
             else:
-                self._agregar_mensaje("Asistente", f"⚠ {error}")
+                self._agregar_mensaje("Asistente", f"error: {error}")
             return
 
         if marca is not None:
@@ -289,6 +364,7 @@ class PantallaChat(tk.Frame):
         # solo las ultimas 6 idas y vueltas: el resto se descarta para no
         # hacer crecer el pedido a la api infinitamente
         self.historial = self.historial[-12:]
+        self._refrescar_historial()
 
     def volver(self):
         if self.on_volver:
