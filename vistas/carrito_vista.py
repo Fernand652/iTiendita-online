@@ -337,6 +337,15 @@ class carrito(tk.Frame):
 
         self._actualizar_reloj()
 
+    def _detener_temporizador(self):
+        if self._timer_id is not None:
+            try: 
+                self.after_cancel(self._timer_id)
+            except Exception:
+                pass
+            self._timer_id = None
+                
+
     def _actualizar_reloj(self):
         """Actualiza cada 1 segundo la etiqueta visual de cuenta regresiva."""
         if self.tiempo_restante_segundos > 0:
@@ -587,10 +596,15 @@ class carrito(tk.Frame):
         self._mostrar_mensaje("Carrito vaciado", tipo="info")
 
     def volver(self):
+        self._detener_temporizador()
         if self.on_volver:
             self.on_volver()
         else:
             self._mostrar_mensaje("Volver no disponible en vista aislada", tipo="info")
+
+    def destroy(self):
+        self._detener_temporizador()
+        super().destroy()
 
     def _cerrar_sesion(self):
         if self.on_cerrar_sesion:
