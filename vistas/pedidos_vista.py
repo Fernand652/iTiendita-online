@@ -1,4 +1,4 @@
-"""Lista plana de pedidos para ADMIN y CLIENTE."""
+"""Panel de pedidos agrupado por estado para ADMIN y lista para CLIENTE."""
 import os
 import sys
 
@@ -152,9 +152,12 @@ class PantallaPedidos(tk.Frame):
                    [("selected", [(GREEN, BLACK)])])
 
         columnas = ("id", "fecha", "cliente", "uds", "total", "estado")
+        mostrar = "tree headings" if self.modo == "admin" else "headings"
         self.tabla = ttk.Treeview(cuerpo, columns=columnas,
-                                  show="headings", height=12,
+                                  show=mostrar, height=12,
                                   style="Pedidos.Treeview")
+        self.tabla.heading("#0", text="Estado")
+        self.tabla.column("#0", width=190, anchor="w", stretch=False)
         encabezados = {
             "id": ("Pedido", 100, "center"),
             "fecha": ("Fecha", 150, "center"),
@@ -198,23 +201,26 @@ class PantallaPedidos(tk.Frame):
         for iid in self.tabla.get_children():
             self.tabla.delete(iid)
 
-        for pedido in self._pedidos:
-            id_pedido = str(pedido.get("id_pedido") or "")
-            if not id_pedido:
-                continue
-            fecha = str(pedido.get("fecha") or "").replace("T", " ")[:16]
-            valores = (
-                id_pedido,
-                fecha,
-                pedido.get("cliente") or "",
-                _cantidad_items(pedido),
-                _fmt_clp(pedido.get("total", 0)),
-                pedido.get("estado") or EstadoPedido.PENDIENTE,
-            )
-            try:
-                self.tabla.insert("", "end", iid=id_pedido, values=valores)
-            except tk.TclError:
-                continue
+        if self.modo == "admin":
+            grupos = {}
+            for pedido in self._pedidos:
+                estado = pedido.get("estado") or EstadoPedido.PENDIENTE
+                if estado not in EstadoPedido.TODOS:
+                    estado = EstadoPedido.PENDIENTE
+                grupos.setdefault(estado, []).append(pedido)
+            for estado in EstadoPedido.TODOS:
+                pedidos = grupos.get(estado) or []
+                if not pedidos:
+                    continue
+                padre = self.tabla.insert(
+                    "", "end", iid=f"grupo::{estado}",
+                    text=f"{estado} ({len(pedidos)})", open=True,
+                )
+                for pedido in pedidos:
+                    self._insertar_fila(pedido, padre)
+        else:
+            for pedido in self._pedidos:
+                self._insertar_fila(pedido)
 
         if id_seleccionado and self.tabla.exists(id_seleccionado):
             self.tabla.selection_set(id_seleccionado)
@@ -233,6 +239,24 @@ class PantallaPedidos(tk.Frame):
             )
         else:
             self.label_resumen.config(text="Sin pedidos registrados")
+
+    def _insertar_fila(self, pedido, padre=""):
+        id_pedido = str(pedido.get("id_pedido") or "")
+        if not id_pedido:
+            return
+        fecha = str(pedido.get("fecha") or "").replace("T", " ")[:16]
+        valores = (
+            id_pedido,
+            fecha,
+            pedido.get("cliente") or "",
+            _cantidad_items(pedido),
+            _fmt_clp(pedido.get("total", 0)),
+            pedido.get("estado") or EstadoPedido.PENDIENTE,
+        )
+        try:
+            self.tabla.insert(padre, "end", iid=id_pedido, values=valores)
+        except tk.TclError:
+            pass
 
     def _al_seleccionar(self, _event):
         seleccion = self.tabla.selection()
@@ -273,6 +297,9 @@ class PantallaPedidos(tk.Frame):
             return
         id_pedido = str(seleccion[0])
         pedido = self._por_id.get(id_pedido)
+        if pedido is None:
+            self._avisar("Selecciona un pedido", "error")
+            return
         if self._siguiente_estado(pedido) is None:
             self._avisar("El pedido ya está entregado", "info")
             return
@@ -339,8 +366,10 @@ def abrir_ventana_pedidos(parent, obtener_pedidos, on_avanzar):
     ventana.title("Pedidos")
     ventana.geometry("980x620")
     ventana.configure(bg=BG_DARK)
-    PantallaPedidos(ventana, obtener_pedidos, modo="admin",
-                    on_avanzar=on_avanzar).pack(fill="both", expand=True)
+    pantalla = PantallaPedidos(ventana, obtener_pedidos, modo="admin",
+                               on_avanzar=on_avanzar)
+    pantalla.pack(fill="both", expand=True)
+    ventana.pantalla = pantalla
     try:
         ventana.transient(root)
         ventana.grab_set()

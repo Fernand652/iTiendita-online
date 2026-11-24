@@ -160,6 +160,7 @@ class RetroVaultApp:
         # asistente que contesta el servidor por el socket.
         self._pantalla_chat = None
         self._pantalla_carrito = None
+        self._ventana_pedidos_admin = None
         # Identidad con la que el servidor guarda nuestro carrito mientras
         # somos invitados (todavía no hay usuario con nombre).
         self._id_remoto = self.usuario_actual or "invitado"
@@ -337,18 +338,20 @@ class RetroVaultApp:
                 detalle += (f" | Pedido {mensaje['id_pedido']} "
                             f"({mensaje.get('estado', '')})")
             _toast(self.root, detalle, tipo="info")
-        elif tipo == T_PEDIDOS and self.conexion is not None:
-            self.pedidos_remotos = list(mensaje.get("pedidos") or [])
+        elif tipo == T_PEDIDOS:
+            if self.conexion is not None:
+                self.pedidos_remotos = list(mensaje.get("pedidos") or [])
             self._refrescar_pedidos()
-        elif tipo == T_PEDIDO_ESTADO and self.conexion is not None:
+        elif tipo == T_PEDIDO_ESTADO:
             pedido = mensaje.get("pedido")
-            if isinstance(pedido, dict) and pedido.get("id_pedido"):
+            if (self.conexion is not None and isinstance(pedido, dict)
+                    and pedido.get("id_pedido")):
                 self.pedidos_remotos = [
                     p for p in self.pedidos_remotos
                     if p.get("id_pedido") != pedido["id_pedido"]
                 ]
                 self.pedidos_remotos.append(pedido)
-                self._refrescar_pedidos()
+            self._refrescar_pedidos()
         elif tipo == T_RESPUESTA:
             # el servidor contesto la consulta del asistente
             if self._pantalla_chat is not None:
@@ -417,6 +420,18 @@ class RetroVaultApp:
                     hijo.refrescar()
                 except Exception:
                     pass
+        ventana = self._ventana_pedidos_admin
+        if ventana is None:
+            return
+        try:
+            if not ventana.winfo_exists():
+                self._ventana_pedidos_admin = None
+                return
+            pantalla = getattr(ventana, "pantalla", None)
+            if pantalla is not None:
+                pantalla.refrescar()
+        except tk.TclError:
+            self._ventana_pedidos_admin = None
 
     def _refrescar_todas(self):
         """
@@ -615,6 +630,7 @@ class RetroVaultApp:
         except (OSError, TypeError, ValueError):
             return False, "La venta se registró, pero no se pudo crear el pedido"
         self.carrito.clear()
+        self._refrescar_pedidos()
         return True, f"Pedido {pedido['id_pedido']} creado ({pedido['estado']})"
     # navegacion entre las 6 pantallas
     def _requiere_sesion(self):
@@ -757,9 +773,11 @@ class RetroVaultApp:
             _toast(self.root, "Los pedidos no están disponibles en esta caja",
                    tipo="error")
             return
-        abrir_ventana_pedidos(self.contenedor,
-                              self.gestor_pedidos.todos,
-                              self._avanzar_pedido)
+        self._ventana_pedidos_admin = abrir_ventana_pedidos(
+            self.contenedor,
+            self.gestor_pedidos.todos,
+            self._avanzar_pedido,
+        )
 
     def _avanzar_pedido(self, id_pedido):
         if self.servidor is not None:

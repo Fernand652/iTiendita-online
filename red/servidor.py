@@ -583,6 +583,8 @@ class ServidorCarritos(threading.Thread):
                                 "estado": pedido["estado"]})
         self._enviar(conexion, {"type": T_CARRITO_ESTADO, "items": []})
         self._difundir_pedidos(usuario)
+        self.eventos.put({"type": T_PEDIDOS,
+                          "pedidos": self.gestor_pedidos.todos()})
         if codigo_cupon:
             self.difundir_cupones()
         self._difundir_carritos()
