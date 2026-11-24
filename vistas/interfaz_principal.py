@@ -440,8 +440,19 @@ class PantallaPrincipal(tk.Frame):
         )
         self.lbl_estado.pack(fill="x", padx=20, pady=(12, 0))
 
-        self.grid_catalogo = tk.Frame(contenedor, bg=DARK_CARD)
-        self.grid_catalogo.pack(padx=20, pady=20)
+        marco_grid = tk.Frame(contenedor, bg=DARK_CARD)
+        marco_grid.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+        self._canvas_grid = tk.Canvas(marco_grid, bg=DARK_CARD, highlightthickness=0)
+        self._scroll_grid = tk.Scrollbar(marco_grid, orient="horizontal", command=self._canvas_grid.xview)
+        self.grid_catalogo = tk.Frame(self._canvas_grid, bg=DARK_CARD)
+        self._ventana_grid = self._canvas_grid.create_window((0, 0), window=self.grid_catalogo, anchor="nw")
+        self._canvas_grid.configure(xscrollcommand=self._scroll_grid.set)
+        self._canvas_grid.pack(side="top", fill="both", expand=True)
+        self._scroll_grid.pack(side="bottom", fill="x")
+
+        self.grid_catalogo.bind("<Configure>", lambda e: self._canvas_grid.configure(scrollregion=self._canvas_grid.bbox("all")))
+        self._canvas_grid.bind("<Configure>", lambda e: self._canvas_grid.itemconfigure(self._ventana_grid, height=max(1, e.height)))
 
         self._renderizar_tarjetas(self.inventario)
 

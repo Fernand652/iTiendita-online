@@ -119,7 +119,12 @@ class RetroVaultApp:
         self.root = root
         self.root.title("RetroVault")
         self.root.geometry("1100x700")
+        self.root.minsize(900, 600)
         self.root.configure(bg=BG_DARK)
+        try:
+            self.root.state("zoomed")
+        except Exception:
+            pass
 
         # Una sola instancia de cada una, compartida por toda la app.
         # La persistencia vive en data/productos.json y data/usuarios.json
@@ -151,6 +156,9 @@ class RetroVaultApp:
         self.carrito = []
         # A dónde volver después de loguearse (principal o carrito)
         self._destino_post_login = "principal"
+
+        # historial del chat para toda la sesion (se pasa por referencia a la vista)
+        self.historial_chat = []
 
         # Si somos el ADMIN: el hilo del servidor de sockets.
         self.servidor = servidor
@@ -466,6 +474,7 @@ class RetroVaultApp:
         self.usuario_actual = None
         self.carrito = []
         self.pedidos_remotos = []
+        self.historial_chat.clear()
         self._destino_post_login = "principal"
         # Volvemos a ser invitados: el carrito siguiente solo es local hasta
         # que se inicie sesión otra vez.
@@ -801,6 +810,7 @@ class RetroVaultApp:
             on_ir_login=lambda: self._ir_a_login_preservando_carrito(destino="principal"),
             conexion=self.conexion,
             consultar_local=consultar_local,
+            historial=self.historial_chat,
         )
         pantalla.pack(fill="both", expand=True)
         self._pantalla_chat = pantalla
@@ -855,6 +865,7 @@ class RetroVaultApp:
         # invitado ya había agregado (stock ya reservado, solo se traspasa).
         invitados = list(self.carrito) if self.usuario_actual is None and self.carrito else []
         self.usuario_actual = usuario
+        self.historial_chat.clear()
         self._id_remoto = usuario
         if usuario not in self.carritos:
             self.carritos[usuario] = []
@@ -884,6 +895,7 @@ class RetroVaultApp:
         # Los nuevos registros son siempre "normal"; mismo merge de invitado.
         invitados = list(self.carrito) if self.usuario_actual is None and self.carrito else []
         self.usuario_actual = datos_usuario.get("correo")
+        self.historial_chat.clear()
         self._id_remoto = self.usuario_actual
         if self.usuario_actual not in self.carritos:
             self.carritos[self.usuario_actual] = []
