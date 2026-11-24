@@ -959,8 +959,17 @@ class PantallaAdmin(tk.Frame):
                 for p in self.inventario.productos:
                     precio_fmt = f"${p.precio:,.0f}".replace(",", ".")
                     marca = "✓" if getattr(p, "imagen", None) else "—"
+                    esperando = (
+                        self.lista_deseos.cantidad_esperando(p.id)
+                        if self.lista_deseos is not None else 0
+                    )
+                    stock_txt = str(p.stock)
+                    if esperando:
+                        sufijo = "espera" if esperando == 1 else "esperan"
+                        stock_txt += f" · {esperando} {sufijo}"
                     self.tabla.insert("", "end", iid=str(p.id),
-                                      values=(p.id, p.nombre, precio_fmt, p.stock, p.categoria, marca))
+                                      values=(p.id, p.nombre, precio_fmt, stock_txt,
+                                              p.categoria, marca))
                 try:
                     total = self.inventario.calcular_valor_inventario()
                     self.label_valor_total.config(

@@ -3,8 +3,14 @@ from persistencia.gestor_persistencia import RUTA_DESEOS_JSON, cargar_json, guar
 
 
 class ListaDeseos:
-    def __init__(self):
-        self.usuarios = cargar_json(RUTA_DESEOS_JSON, default={}) or {}
+    def __init__(self, archivo=None):
+        """Carga la lista desde ``archivo`` o desde la ruta real de la tienda.
+
+        El parámetro opcional permite probar la persistencia en un archivo
+        temporal sin modificar las listas reales de los clientes.
+        """
+        self.archivo = archivo or RUTA_DESEOS_JSON
+        self.usuarios = cargar_json(self.archivo, default={}) or {}
         if not isinstance(self.usuarios, dict):
             self.usuarios = {}
 
@@ -70,5 +76,9 @@ class ListaDeseos:
                 if isinstance(datos, dict)
                 and id_producto in (datos.get("favoritos") or [])]
 
+    def cantidad_esperando(self, id_producto):
+        """Cantidad de clientes suscritos a la reposición de un producto."""
+        return len(self.usuarios_suscritos(id_producto))
+
     def _guardar(self):
-        guardar_json(RUTA_DESEOS_JSON, self.usuarios)
+        guardar_json(self.archivo, self.usuarios)
