@@ -15,7 +15,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import shutil
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog, simpledialog
+from datetime import date
 try:
     from vistas.estilos import *
 except ImportError:
@@ -30,9 +31,11 @@ except ImportError:
 try:
     from persistencia.gestor_cupones import GestorCupones
     from persistencia.gestor_tarifas import GestorTarifas
+    from persistencia.gestor_ofertas import GestorOfertas
 except ImportError:
     from gestor_cupones import GestorCupones
     from gestor_tarifas import GestorTarifas
+    from gestor_ofertas import GestorOfertas
 
 try:
     from vistas.toast import mostrar_toast
@@ -69,7 +72,9 @@ class PantallaAdmin(tk.Frame):
                  usuario_actual=None, on_cerrar_sesion=None, gestor_cupones=None,
                  on_cupones_cambiaron=None, gestor_tarifas=None,
                  on_tarifas_cambiaron=None, lista_deseos=None,
-                 on_ver_pedidos=None):
+                 on_ver_pedidos=None, gestor_ofertas=None,
+                 on_ofertas_cambiaron=None, obtener_tiempo_reserva=None,
+                 configurar_tiempo_reserva=None):
         super().__init__(parent, bg=BG_DARK)
         self.inventario = inventario or Inventario()
         self.carritos = carritos if carritos is not None else {}
@@ -80,6 +85,10 @@ class PantallaAdmin(tk.Frame):
         self.on_cupones_cambiaron = on_cupones_cambiaron
         self.gestor_tarifas = gestor_tarifas or GestorTarifas()
         self.on_tarifas_cambiaron = on_tarifas_cambiaron
+        self.gestor_ofertas = gestor_ofertas or GestorOfertas()
+        self.on_ofertas_cambiaron = on_ofertas_cambiaron
+        self.obtener_tiempo_reserva = obtener_tiempo_reserva
+        self.configurar_tiempo_reserva = configurar_tiempo_reserva
         # La recibe desde main_gui para que el panel admin comparta la misma
         # lista de deseos del servidor, aunque todavía no la muestre en tabla.
         self.lista_deseos = lista_deseos
@@ -253,6 +262,16 @@ class PantallaAdmin(tk.Frame):
         ).pack(side="right", padx=(0, 8), ipadx=8, ipady=4)
 
         tk.Button(
+            fila_vista, text="OFERTAS", font=FUENTE_NAV,
+            bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
+            command=self._abrir_ofertas,
+        ).pack(side="right", padx=(0, 8), ipadx=8, ipady=4)
+        if self.configurar_tiempo_reserva:
+            tk.Button(fila_vista, text="RESERVA", font=FUENTE_NAV,
+                      bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
+                      command=self._configurar_reserva).pack(side="right", padx=(0, 8), ipadx=8, ipady=4)
+
+        tk.Button(
             fila_vista, text="TARIFAS", font=FUENTE_NAV,
             bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0, cursor="hand2",
             command=self._abrir_tarifas,
@@ -279,6 +298,119 @@ class PantallaAdmin(tk.Frame):
             abrir_ventana_ventas(self)
         except Exception:
             return
+
+    def _configurar_reserva(self):
+        actual = self.obtener_tiempo_reserva() if self.obtener_tiempo_reserva else 5
+        minutos = simpledialog.askinteger("Tiempo de reserva", "Minutos sin actividad (1 a 120):",
+                                          initialvalue=actual, minvalue=1, maxvalue=120, parent=self)
+        if minutos is None:
+            return
+        ok, mensaje = self.configurar_tiempo_reserva(minutos)
+        _toast(self, mensaje, tipo="exito" if ok else "error")
+
+    def _abrir_ofertas(self):
+        """Administra precios temporales por producto o categoría."""
+        ventana = tk.Toplevel(self)
+        ventana.title("Administrar ofertas")
+        ventana.geometry("680x620")
+        ventana.configure(bg=BG_DARK)
+        cuerpo = tk.Frame(ventana, bg=BG_DARK, padx=24, pady=20)
+        cuerpo.pack(fill="both", expand=True)
+        tk.Label(cuerpo, text="OFERTAS TEMPORALES", font=FUENTE_TITULO,
+                 bg=BG_DARK, fg=WHITE).pack(anchor="w")
+        tk.Label(cuerpo, text="El precio normal se conserva y vuelve al vencer la oferta.",
+                 font=FUENTE_BODY, bg=BG_DARK, fg=GRAY_TEXT).pack(anchor="w", pady=(2, 8))
+
+        tabla = ttk.Treeview(cuerpo, columns=("id", "aplica", "precio", "inicio", "fin"),
+                             show="headings", height=7)
+        for clave, texto, ancho in (("id", "ID", 70), ("aplica", "Aplica a", 230),
+                                    ("precio", "Precio oferta", 110), ("inicio", "Desde", 95),
+                                    ("fin", "Hasta", 95)):
+            tabla.heading(clave, text=texto)
+            tabla.column(clave, width=ancho, anchor="center")
+        tabla.pack(fill="x", pady=(8, 12))
+
+        formulario = tk.Frame(cuerpo, bg=BG_DARK)
+        formulario.pack(fill="x")
+        tk.Label(formulario, text="Aplicar a", font=FUENTE_CATEGORIA,
+                 bg=BG_DARK, fg=GRAY_TEXT).pack(anchor="w")
+        tipo = ttk.Combobox(formulario, values=("producto", "categoria"), state="readonly")
+        tipo.set("producto")
+        tipo.pack(fill="x", pady=(0, 5))
+        tk.Label(formulario, text="Producto o categoría", font=FUENTE_CATEGORIA,
+                 bg=BG_DARK, fg=GRAY_TEXT).pack(anchor="w")
+        objetivo = ttk.Combobox(formulario, state="readonly")
+        objetivo.pack(fill="x", pady=(0, 5))
+        entradas = {}
+        for clave, texto in (("precio", "Precio oferta (CLP)"),
+                             ("inicio", "Inicio AAAA-MM-DD"),
+                             ("fin", "Término AAAA-MM-DD")):
+            tk.Label(formulario, text=texto, font=FUENTE_CATEGORIA,
+                     bg=BG_DARK, fg=GRAY_TEXT).pack(anchor="w")
+            entrada = tk.Entry(formulario, font=FUENTE_BODY)
+            entrada.pack(fill="x", pady=(0, 5))
+            entradas[clave] = entrada
+        hoy = date.today().isoformat()
+        entradas["inicio"].insert(0, hoy)
+        entradas["fin"].insert(0, hoy)
+        mensaje = tk.Label(formulario, text="", font=FUENTE_BODY, bg=BG_DARK, fg="#ff6b6b")
+        mensaje.pack(anchor="w")
+
+        def actualizar_objetivos(_evento=None):
+            if tipo.get() == "producto":
+                valores = [f"{p.id} · {p.nombre}" for p in self.inventario.productos]
+            else:
+                valores = list(self.inventario.obtener_categorias())
+            objetivo["values"] = valores
+            objetivo.set(valores[0] if valores else "")
+
+        def refrescar():
+            tabla.delete(*tabla.get_children())
+            for oferta in self.gestor_ofertas.ofertas:
+                etiqueta = (f"Producto #{oferta.objetivo}" if oferta.tipo == "producto"
+                            else f"Categoría: {oferta.objetivo}")
+                tabla.insert("", "end", iid=oferta.id_oferta,
+                             values=(oferta.id_oferta, etiqueta,
+                                     f"${oferta.precio_oferta:,.0f}".replace(",", "."),
+                                     oferta.fecha_inicio, oferta.fecha_fin))
+
+        def crear():
+            seleccionado = objetivo.get().strip()
+            valor_objetivo = seleccionado.split(" · ", 1)[0] if tipo.get() == "producto" else seleccionado
+            try:
+                self.gestor_ofertas.crear(tipo.get(), valor_objetivo,
+                                          entradas["precio"].get().replace(".", "").replace(",", ""),
+                                          entradas["inicio"].get(), entradas["fin"].get())
+            except (ValueError, TypeError) as error:
+                mensaje.config(text=str(error), fg="#ff6b6b")
+                return
+            if self.on_ofertas_cambiaron:
+                self.on_ofertas_cambiaron()
+            self._refrescar_tabla()
+            refrescar()
+            mensaje.config(text="Oferta guardada y catálogo actualizado", fg=GREEN)
+
+        def eliminar():
+            seleccion = tabla.selection()
+            if not seleccion:
+                mensaje.config(text="Selecciona una oferta para eliminar", fg="#ff6b6b")
+                return
+            self.gestor_ofertas.eliminar(seleccion[0])
+            if self.on_ofertas_cambiaron:
+                self.on_ofertas_cambiaron()
+            self._refrescar_tabla()
+            refrescar()
+            mensaje.config(text="Oferta eliminada; se restauró el precio vigente", fg=GREEN)
+
+        tipo.bind("<<ComboboxSelected>>", actualizar_objetivos)
+        actualizar_objetivos()
+        acciones = tk.Frame(formulario, bg=BG_DARK)
+        acciones.pack(fill="x", pady=(6, 0))
+        tk.Button(acciones, text="CREAR OFERTA", font=FUENTE_BOTON, command=crear,
+                  bg=GREEN, fg=BLACK, relief="flat").pack(side="left", fill="x", expand=True, ipady=6)
+        tk.Button(acciones, text="ELIMINAR", font=FUENTE_BOTON, command=eliminar,
+                  bg=GRAY_BTN, fg=WHITE, relief="flat").pack(side="left", padx=(8, 0), ipady=6)
+        refrescar()
 
     def _abrir_cupones(self):
         """Formulario acotado de administración para crear y revisar cupones."""

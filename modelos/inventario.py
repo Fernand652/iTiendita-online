@@ -94,7 +94,8 @@ class Inventario:
         if stock < 0:
             raise ValueError("El stock no puede ser negativo")
         producto.nombre = nombre
-        producto.precio = precio
+        producto.precio_normal = float(precio)
+        producto.precio = float(precio)
         producto.stock = stock
         producto.categoria = categoria
         producto.imagen = imagen

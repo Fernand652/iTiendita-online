@@ -87,6 +87,7 @@ class PantallaPedidos(tk.Frame):
         self.on_volver = on_volver
         self._pedidos = []
         self._por_id = {}
+        self.estado_filtro = "Todos"
         self._crear_ui()
         self.refrescar()
 
@@ -124,6 +125,15 @@ class PantallaPedidos(tk.Frame):
                   bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0,
                   cursor="hand2", command=self.refrescar).pack(
                       side="left", ipadx=8, ipady=4)
+        tk.Label(acciones, text="Estado:", font=FUENTE_BODY,
+                 bg=BG_DARK, fg=GRAY_TEXT).pack(side="left", padx=(14, 4))
+        self.combo_estado = ttk.Combobox(
+            acciones, state="readonly", width=18,
+            values=("Todos",) + EstadoPedido.TODOS,
+        )
+        self.combo_estado.set(self.estado_filtro)
+        self.combo_estado.pack(side="left")
+        self.combo_estado.bind("<<ComboboxSelected>>", self._filtrar_estado)
         self.label_mensaje = tk.Label(acciones, text="", font=FUENTE_BODY,
                                       bg=BG_DARK, fg=GRAY_TEXT)
         self.label_mensaje.pack(side="left", padx=12)
@@ -197,6 +207,9 @@ class PantallaPedidos(tk.Frame):
         except Exception:
             datos = []
         self._pedidos = [p for p in datos if isinstance(p, dict)]
+        if self.estado_filtro != "Todos":
+            self._pedidos = [p for p in self._pedidos
+                             if p.get("estado") == self.estado_filtro]
         self._pedidos.sort(key=_clave_orden, reverse=True)
         self._por_id = {
             str(p.get("id_pedido")): p
@@ -240,14 +253,18 @@ class PantallaPedidos(tk.Frame):
             self._mostrar_detalle(None)
             self._actualizar_boton(None)
 
-        pendientes = sum(1 for p in self._pedidos
-                         if p.get("estado") == EstadoPedido.PENDIENTE)
+        pendientes = sum(1 for p in datos if isinstance(p, dict)
+                         and p.get("estado") == EstadoPedido.PENDIENTE)
         if self._pedidos:
             self.label_resumen.config(
-                text=f"Pedidos: {len(self._pedidos)} | Pendientes: {pendientes}"
+                text=f"Mostrando: {len(self._pedidos)} | Total: {len(datos)} | Pendientes: {pendientes}"
             )
         else:
             self.label_resumen.config(text="Sin pedidos registrados")
+
+    def _filtrar_estado(self, _evento=None):
+        self.estado_filtro = self.combo_estado.get() or "Todos"
+        self.refrescar()
 
     def _insertar_fila(self, pedido, padre=""):
         id_pedido = str(pedido.get("id_pedido") or "")

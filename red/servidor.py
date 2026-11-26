@@ -88,6 +88,7 @@ try:
     from persistencia.gestor_cupones import GestorCupones
     from persistencia.gestor_tarifas import GestorTarifas
     from persistencia.gestor_pedidos import GestorPedidos
+    from persistencia.gestor_ofertas import GestorOfertas
 except ImportError:  # ejecución directa dentro de red/
     from despacho import Despacho
     from api_gemini import consultar_gemini
@@ -96,6 +97,7 @@ except ImportError:  # ejecución directa dentro de red/
     from gestor_cupones import GestorCupones
     from gestor_tarifas import GestorTarifas
     from gestor_pedidos import GestorPedidos
+    from gestor_ofertas import GestorOfertas
 
 # Cada cuánto revisamos el accept() para ver si hay que apagar el servidor.
 TIMEOUT_ACCEPT = 0.5
@@ -117,6 +119,8 @@ class ServidorCarritos(threading.Thread):
         self.gestor_cupones = GestorCupones()
         self.gestor_tarifas = gestor_tarifas or GestorTarifas()
         self.gestor_pedidos = gestor_pedidos or GestorPedidos()
+        self.gestor_ofertas = GestorOfertas()
+        self.gestor_ofertas.aplicar_a_inventario(self.inventario)
         self.lista_deseos = ListaDeseos()
         self.host = host
         self.puerto = puerto
@@ -188,6 +192,7 @@ class ServidorCarritos(threading.Thread):
                     conexion, direccion = srv.accept()
                 except socket.timeout:
                     self.verificar_carritos_expirados()
+                    self.verificar_ofertas_vencidas()
                     continue
                 except OSError:
                     break
@@ -240,6 +245,21 @@ class ServidorCarritos(threading.Thread):
                 })
             self._difundir_stock(list(set(tocados_totales)))
             self._difundir_carritos()
+
+    def configurar_tiempo_carritos(self, minutos):
+        try:
+            minutos = int(minutos)
+        except (TypeError, ValueError):
+            return False, "El tiempo debe ser un número entero"
+        if not 1 <= minutos <= 120:
+            return False, "El tiempo debe estar entre 1 y 120 minutos"
+        self.tiempo_limite_carritos_minutos = minutos
+        return True, f"Reserva configurada en {minutos} minutos"
+
+    def verificar_ofertas_vencidas(self):
+        """Restaura precios normales al vencer una oferta y lo difunde."""
+        if self.gestor_ofertas.aplicar_a_inventario(self.inventario):
+            self.difundir_inventario()
                 
 
     def detener(self):
@@ -704,6 +724,9 @@ class ServidorCarritos(threading.Thread):
         Avisa a todos el CATÁLOGO COMPLETO. Se llama desde la ventana del
         ADMIN cuando crea, edita o elimina un producto.
         """
+        # Si se editó el precio normal de un producto, una promoción vigente
+        # debe seguir teniendo prioridad antes de enviar el catálogo.
+        self.gestor_ofertas.aplicar_a_inventario(self.inventario)
         anterior, actual = self._catalogo_anterior, self._catalogo_por_id()
         mensaje = {"type": T_INVENTARIO, "productos": self._catalogo()}
         with self._lock:
@@ -715,6 +738,11 @@ class ServidorCarritos(threading.Thread):
         self._notificar_cambios_catalogo(anterior, actual)
         self._catalogo_anterior = actual
         self._difundir_carritos()
+
+    def aplicar_ofertas_y_difundir(self):
+        """Recalcula precios de oferta tras crear o eliminar una promoción."""
+        self.gestor_ofertas.aplicar_a_inventario(self.inventario)
+        self.difundir_inventario()
 
     def _notificar_cambios_catalogo(self, anterior, actual):
         with self._lock:

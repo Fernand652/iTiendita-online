@@ -41,6 +41,7 @@ try:
     from vistas.toast import mostrar_toast
     from persistencia.gestor_tarifas import GestorTarifas
     from persistencia.gestor_pedidos import GestorPedidos
+    from persistencia.gestor_ofertas import GestorOfertas
     from modelos.usuario import GestorUsuarios
     from modelos.inventario import Inventario
     from modelos.producto import Producto
@@ -73,6 +74,7 @@ except ImportError:  # fallback cuando se ejecuta con cwd=vistas/
         mostrar_toast = None
     from persistencia.gestor_tarifas import GestorTarifas
     from persistencia.gestor_pedidos import GestorPedidos
+    from persistencia.gestor_ofertas import GestorOfertas
     from modelos.usuario import GestorUsuarios
     from modelos.inventario import Inventario
     from modelos.producto import Producto
@@ -136,6 +138,9 @@ class RetroVaultApp:
         self.inventario = inventario or (servidor.inventario if servidor is not None else Inventario())
         self.gestor_cupones = servidor.gestor_cupones if servidor is not None else GestorCupones()
         self.gestor_tarifas = servidor.gestor_tarifas if servidor is not None else GestorTarifas()
+        self.gestor_ofertas = servidor.gestor_ofertas if servidor is not None else GestorOfertas()
+        if servidor is None:
+            self.gestor_ofertas.aplicar_a_inventario(self.inventario)
         self.lista_deseos = servidor.lista_deseos if servidor is not None else ListaDeseos()
         # Pedidos: la caja ADMIN comparte el gestor del servidor; la caja
         # cliente (sin servidor local) usa el suyo. Con conexión remota los
@@ -861,8 +866,15 @@ class RetroVaultApp:
             usuario_actual=self.usuario_actual,
             on_cerrar_sesion=self.cerrar_sesion,
             gestor_cupones=self.gestor_cupones,
+            gestor_ofertas=self.gestor_ofertas,
             lista_deseos=self.lista_deseos,
             on_cupones_cambiaron=(self.servidor.difundir_cupones if self.servidor is not None else None),
+            on_ofertas_cambiaron=(self.servidor.aplicar_ofertas_y_difundir if self.servidor is not None
+                                  else lambda: self.gestor_ofertas.aplicar_a_inventario(self.inventario)),
+            obtener_tiempo_reserva=(lambda: self.servidor.tiempo_limite_carritos_minutos)
+                                  if self.servidor is not None else None,
+            configurar_tiempo_reserva=self.servidor.configurar_tiempo_carritos
+                                      if self.servidor is not None else None,
             gestor_tarifas=self.gestor_tarifas,
             on_tarifas_cambiaron=(self.servidor.difundir_tarifas if self.servidor is not None else None),
             on_ver_pedidos=self._abrir_pedidos_admin,

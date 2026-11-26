@@ -19,6 +19,7 @@ RUTA_USUARIOS_JSON = RAIZ_PROYECTO / "data" / "usuarios.json"
 RUTA_VENTAS_JSON = RAIZ_PROYECTO / "data" / "ventas.json"
 RUTA_PEDIDOS_JSON = RAIZ_PROYECTO / "data" / "pedidos.json"
 RUTA_CUPONES_JSON = RAIZ_PROYECTO / "data" / "cupones.json"
+RUTA_OFERTAS_JSON = RAIZ_PROYECTO / "data" / "ofertas.json"
 RUTA_DESEOS_JSON = RAIZ_PROYECTO / "data" / "listas_deseos.json"
 RUTA_CONFIG_DESPACHO_JSON = RAIZ_PROYECTO / "data" / "config_despacho.json"
 # Legacy: solo se usa para migrar una vez, luego se elimina el CSV.

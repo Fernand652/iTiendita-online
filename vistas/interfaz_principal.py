@@ -110,10 +110,15 @@ class TarjetaProducto(tk.Frame):
         ).pack(anchor="w")
 
         precio_formateado = f"${self.producto.precio:,.0f}".replace(",", ".")
+        precio_normal = float(getattr(self.producto, "precio_normal", self.producto.precio))
+        if precio_normal > float(self.producto.precio):
+            anterior = f"Antes: ${precio_normal:,.0f}".replace(",", ".")
+            tk.Label(self, text=anterior, font=FUENTE_BODY, bg=DARK_CARD,
+                     fg=GRAY_TEXT).pack(anchor="w", pady=(6, 0))
         tk.Label(
             self, text=precio_formateado, font=FUENTE_PRECIO,
-            bg=DARK_CARD, fg=WHITE
-        ).pack(anchor="w", pady=(6, 12))
+            bg=DARK_CARD, fg=GREEN if precio_normal > float(self.producto.precio) else WHITE
+        ).pack(anchor="w", pady=(2 if precio_normal > float(self.producto.precio) else 6, 12))
 
         # Bono: si el producto esta sin stock, deshabilita el boton.
         # Esto conecta directo con el atributo stock que ya manejas
