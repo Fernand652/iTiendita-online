@@ -8,7 +8,7 @@ real de la tienda y devuelve la respuesta para mostrarla en el chat.
 import urllib.request
 import json
 
-API_KEY = "AQ.Ab8RN6KsOFSoQubv2z7LNZKXW-hI9kJz48CIoePn8FgYWpXpKg"
+API_KEY = "AQ.Ab8RN6IXe2zdfe8Mpq6nohtzU3A7cGoLlCzCNsi0XhzhwfTqGQ"
 MODELO = "gemini-3.1-flash-lite"
 URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODELO}:generateContent?key={API_KEY}"
 
@@ -85,11 +85,19 @@ def consultar_gemini(pregunta, productos, historial=None):
                 return None, "Gemini respondió vacío, prueba otra vez."
             return texto, None
     except urllib.error.HTTPError as e:
-        print(f"Error: {e.code}")
-        print(e.read().decode("utf-8"))
-        return None, f"Gemini rechazó la consulta (error {e.code})."
+        if e.code in (400, 401, 403):
+            return None, "API key invalida o sin permisos. Revisa modelos/api_gemini.py en el ADMIN."
+        if e.code == 429:
+            return None, "Limite de solicitudes excedido. Espera un momento y vuelve a intentar."
+        return None, f"Gemini rechazo la consulta (error {e.code})."
+    except urllib.error.URLError as e:
+        if isinstance(e.reason, TimeoutError):
+            return None, "Tiempo de espera agotado al consultar Gemini. Intenta otra vez."
+        return None, f"No se pudo conectar con Gemini: {e.reason}"
+    except TimeoutError:
+        return None, "Tiempo de espera agotado al consultar Gemini. Intenta otra vez."
     except Exception as e:
-        return None, f"No se pudo conectar con Gemini (¿hay internet?): {e}"
+        return None, f"No se pudo conectar con Gemini: {e}"
 
 
 if __name__ == "__main__":

@@ -906,6 +906,7 @@ class RetroVaultApp:
             conexion=self.conexion,
             consultar_local=consultar_local,
             historial=self.historial_chat,
+            on_agregar_carro=self._agregar_al_carrito,
         )
         pantalla.pack(fill="both", expand=True)
         self._pantalla_chat = pantalla
