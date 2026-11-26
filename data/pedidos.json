@@ -78,5 +78,21 @@
         "total": 1428000.0,
         "estado": "Pendiente",
         "fecha": "2026-11-26T17:36:21"
+    },
+    {
+        "id_pedido": "P-000006",
+        "id_venta": 23,
+        "cliente": "admin",
+        "items": [
+            {
+                "id": 5,
+                "nombre": "perro caliente",
+                "precio": 1200.0,
+                "cantidad": 4
+            }
+        ],
+        "total": 5712.0,
+        "estado": "Pendiente",
+        "fecha": "2026-11-26T19:45:34"
     }
 ]

@@ -18,7 +18,9 @@ Ejecución desde la raíz del proyecto:
 """
 
 import os
+import random
 import sys
+import time
 
 # Permite `python vistas/main_gui.py` desde la raíz y también
 # `python -m vistas.main_gui`: la raíz siempre queda en sys.path.
@@ -101,6 +103,18 @@ def _toast(widget, mensaje, tipo="error"):
         pass
 
 
+# paleta sobria de la notificacion de compras (esquina inferior izquierda)
+NOTIF_FONDO = "#1c221d"
+NOTIF_BORDE = "#2b3a30"
+NOTIF_TEXTO = "#eef3ef"
+NOTIF_SUAVE = "#b4beb6"
+NOTIF_VERDE = "#4aa677"
+NOTIF_FUENTE = ("Arial", 9)
+NOTIF_FUENTE_TITULO = ("Arial", 9, "bold")
+INTERVALO_COMPRA_MS = 60000
+DURACION_NOTIFICACION_MS = 45000
+
+
 class RetroVaultApp:
     """
     La app.
@@ -174,6 +188,13 @@ class RetroVaultApp:
         self._pantalla_chat = None
         self._pantalla_carrito = None
         self._ventana_pedidos_admin = None
+
+        # Compra automatica: un solo temporizador y una sola notificacion.
+        self._id_temporizador_compras = None
+        self._id_cierre_notificacion = None
+        self._notificacion_compra = None
+        self._ultima_compra_automatica = 0.0
+
         # Identidad con la que el servidor guarda nuestro carrito mientras
         # somos invitados (todavía no hay usuario con nombre).
         self._id_remoto = self.usuario_actual or "invitado"
@@ -203,6 +224,7 @@ class RetroVaultApp:
             self._bombeo_de_eventos()
         if self.conexion is None:
             self._revisar_avisos_locales()
+        self._programar_siguiente_compra()
 
     def _revisar_avisos_locales(self):
         """En modo local también detecta cambios y entrega avisos por sesión."""
@@ -387,6 +409,21 @@ class RetroVaultApp:
         elif tipo == T_PAGO_OK:
             if self._pantalla_carrito is not None:
                 self._pantalla_carrito.resolver_pago(True, "Compra confirmada por el servidor")
+            items_compra = [
+                {
+                    "id": el["producto"].id,
+                    "nombre": el["producto"].nombre,
+                    "precio": el["producto"].precio,
+                    "cantidad": el["cantidad"],
+                }
+                for el in self.carrito
+            ]
+            if items_compra:
+                self._mostrar_notificacion_compra(
+                    self.usuario_actual or "Invitado",
+                    items_compra,
+                    float(mensaje.get("total", 0) or 0),
+                )
             detalle = f"¡Compra confirmada! Total: ${mensaje.get('total', 0):,.0f}"
             if mensaje.get("id_pedido"):
                 detalle += (f" | Pedido {mensaje['id_pedido']} "
@@ -514,6 +551,151 @@ class RetroVaultApp:
         self._pantalla_carrito = None
         for widget in self.contenedor.winfo_children():
             widget.destroy()
+
+    def _programar_siguiente_compra(self):
+        """Cancela el temporizador anterior y deja uno solo de 60 s."""
+        if self._id_temporizador_compras is not None:
+            try:
+                self.root.after_cancel(self._id_temporizador_compras)
+            except (ValueError, tk.TclError):
+                pass
+        self._id_temporizador_compras = self.root.after(
+            INTERVALO_COMPRA_MS, self._ciclo_compra_automatica
+        )
+
+    def _elegir_plan_compra(self):
+        """Devuelve (cliente, plan) con maximo 2 unidades, o None."""
+        clientes = [u for u in self.gestor_usuarios.usuarios
+                    if getattr(u, "rol", "normal") != "admin"]
+        if not clientes:
+            return None
+        disponibles = [p for p in self.inventario.productos if p.stock > 0]
+        if not disponibles:
+            return None
+        planes = []
+        for producto in disponibles:
+            planes.append([(producto, 1)])
+            if producto.stock >= 2:
+                planes.append([(producto, 2)])
+        if len(disponibles) >= 2:
+            primero, segundo = random.sample(disponibles, 2)
+            planes.append([(primero, 1), (segundo, 1)])
+        return random.choice(clientes), random.choice(planes)
+
+    def _ciclo_compra_automatica(self):
+        """Una compra por minuto como maximo; nunca bloquea la interfaz."""
+        ahora = time.monotonic()
+        if ahora - self._ultima_compra_automatica < INTERVALO_COMPRA_MS / 1000.0:
+            self._programar_siguiente_compra()
+            return
+        self._ultima_compra_automatica = ahora
+        try:
+            eleccion = self._elegir_plan_compra()
+            if eleccion is None:
+                return
+            cliente, plan = eleccion
+            items = []
+            for producto, cantidad in plan:
+                if self.inventario.descontar_stock(producto.id, cantidad):
+                    items.append({
+                        "id": producto.id,
+                        "nombre": producto.nombre,
+                        "precio": producto.precio,
+                        "cantidad": cantidad,
+                    })
+            if not items:
+                return
+            total = sum(float(item["precio"]) * item["cantidad"] for item in items)
+            self._registrar_compra_automatica(cliente, items, total)
+            self._mostrar_notificacion_compra(cliente, items, total)
+            if self.servidor is not None:
+                self.servidor.difundir_inventario()
+        except Exception:
+            pass
+        finally:
+            self._programar_siguiente_compra()
+
+    def _registrar_compra_automatica(self, cliente, items, total):
+        """Guarda la compra simulada en el historial de ventas."""
+        if RUTA_VENTAS_JSON is None or cargar_json is None or guardar_json is None:
+            return
+        try:
+            from datetime import datetime
+            fecha = datetime.now().isoformat(timespec="seconds")
+            ventas = cargar_json(str(RUTA_VENTAS_JSON), default=[]) or []
+            venta = {
+                "id_venta": self._siguiente_id_venta(ventas),
+                "cliente": cliente.nombre,
+                "run": "",
+                "fecha": fecha,
+                "items": items,
+                "subtotal": total,
+                "cupon": None,
+                "descuento": 0.0,
+                "subtotal_neto": total,
+                "envio": 0.0,
+                "despacho": {},
+                "iva": 0.0,
+                "total": total,
+            }
+            ventas.append(venta)
+            guardar_json(str(RUTA_VENTAS_JSON), ventas)
+        except Exception:
+            pass
+
+    def _ocultar_notificacion_compra(self):
+        """Cierra la notificacion y cancela su autocierre."""
+        if self._id_cierre_notificacion is not None:
+            try:
+                self.root.after_cancel(self._id_cierre_notificacion)
+            except (ValueError, tk.TclError):
+                pass
+            self._id_cierre_notificacion = None
+        if self._notificacion_compra is not None:
+            try:
+                if self._notificacion_compra.winfo_exists():
+                    self._notificacion_compra.destroy()
+            except tk.TclError:
+                pass
+            self._notificacion_compra = None
+
+    def _mostrar_notificacion_compra(self, cliente, items, total):
+        """Tarjeta angosta abajo a la izquierda, visible en cualquier vista."""
+        nombre_cliente = getattr(cliente, "nombre", cliente) or "Invitado"
+        self._ocultar_notificacion_compra()
+        marco = tk.Frame(
+            self.root, bg=NOTIF_FONDO, width=240,
+            highlightthickness=1, highlightbackground=NOTIF_BORDE,
+        )
+        cabecera = tk.Frame(marco, bg=NOTIF_FONDO)
+        cabecera.pack(fill="x", padx=(10, 6), pady=(8, 2))
+        tk.Label(
+            cabecera, text=f"Compra de {nombre_cliente}", font=NOTIF_FUENTE_TITULO,
+            bg=NOTIF_FONDO, fg=NOTIF_VERDE, anchor="w",
+        ).pack(side="left", fill="x", expand=True)
+        tk.Button(
+            cabecera, text="×", font=("Arial", 11, "bold"),
+            bg=NOTIF_FONDO, fg=NOTIF_SUAVE,
+            activebackground=NOTIF_BORDE, activeforeground=NOTIF_TEXTO,
+            relief="flat", bd=0, cursor="hand2", padx=4, pady=0,
+            command=self._ocultar_notificacion_compra,
+        ).pack(side="right")
+        detalle = " | ".join(
+            f"{item['nombre']} x{item['cantidad']}" for item in items
+        )
+        tk.Label(
+            marco, text=detalle, font=NOTIF_FUENTE, bg=NOTIF_FONDO,
+            fg=NOTIF_SUAVE, wraplength=210, justify="left", anchor="w",
+        ).pack(fill="x", padx=10, pady=(0, 2))
+        tk.Label(
+            marco, text=f"Total: ${total:,.0f}".replace(",", "."),
+            font=NOTIF_FUENTE_TITULO, bg=NOTIF_FONDO, fg=NOTIF_TEXTO, anchor="w",
+        ).pack(fill="x", padx=10, pady=(0, 8))
+        marco.place(relx=0.0, rely=1.0, x=16, y=-16, anchor="sw", width=240)
+        self._notificacion_compra = marco
+        self._id_cierre_notificacion = self.root.after(
+            DURACION_NOTIFICACION_MS, self._ocultar_notificacion_compra
+        )
 
     def _es_admin(self):
         """True solo si hay sesión y el usuario es admin."""
@@ -687,6 +869,9 @@ class RetroVaultApp:
             return False, "La venta se registró, pero no se pudo crear el pedido"
         self.carrito.clear()
         self._refrescar_pedidos()
+        self._mostrar_notificacion_compra(
+            self.usuario_actual or "Invitado", venta["items"], venta["total"]
+        )
         return True, f"Pedido {pedido['id_pedido']} creado ({pedido['estado']})"
     # navegacion entre las 6 pantallas
     def _requiere_sesion(self):
