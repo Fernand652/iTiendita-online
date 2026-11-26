@@ -172,7 +172,7 @@ class PantallaPrincipal(tk.Frame):
                            hace click en "Añadir al Carro".
     """
 
-    def __init__(self, parent, inventario=None, on_agregar_carro=None, on_ir_admin=None, on_ver_carrito=None, on_ir_explorar=None, on_ir_chat=None, on_favorito=None, on_suscribir=None, on_ver_deseos=None, usuario_actual=None, es_admin=False, on_cerrar_sesion=None, on_ir_login=None, on_ver_pedidos=None, on_ver_avisos=None):
+    def __init__(self, parent, inventario=None, on_agregar_carro=None, on_ir_admin=None, on_ver_carrito=None, on_ir_explorar=None, on_ir_chat=None, on_favorito=None, on_suscribir=None, on_ver_deseos=None, usuario_actual=None, es_admin=False, on_cerrar_sesion=None, on_ir_login=None, on_ver_pedidos=None, on_ver_avisos=None, on_ver_perfil=None):
         super().__init__(parent, bg=BG_DARK)
         # Acepta tanto lista de productos como instancia de Inventario
         if inventario is None:
@@ -191,6 +191,7 @@ class PantallaPrincipal(tk.Frame):
         self.on_ver_deseos = on_ver_deseos
         self.on_ver_pedidos = on_ver_pedidos
         self.on_ver_avisos = on_ver_avisos
+        self.on_ver_perfil = on_ver_perfil
         self.usuario_actual = usuario_actual
         self.es_admin = bool(es_admin)
         self.on_cerrar_sesion = on_cerrar_sesion
@@ -233,11 +234,14 @@ class PantallaPrincipal(tk.Frame):
         link_categorias.pack(side="left", padx=8)
         link_categorias.bind("<Button-1>", lambda e: self._ir_explorar(limpio=True))
 
-        # ADMIN oculto para usuarios normales: solo se crea si es_admin
-        if self.es_admin:
-            admin_link = self._link_nav(nav_links, "ADMIN")
-            admin_link.pack(side="left", padx=8)
-            admin_link.bind("<Button-1>", lambda e: self._ir_admin())
+        link_perfil = self._link_nav(nav_links, "MI PERFIL")
+        link_perfil.pack(side="left", padx=8)
+        link_perfil.bind("<Button-1>", lambda e: self._abrir_perfil())
+
+        # ADMIN se crea siempre, pero solo se empaqueta con sesión admin.
+        self._link_admin = self._link_nav(nav_links, "ADMIN")
+        self._link_admin.bind("<Button-1>", lambda e: self._ir_admin())
+        self.actualizar_admin(self.es_admin)
 
         # Buscador con eventos de placeholder y filtrado
         buscador_frame = tk.Frame(
@@ -348,6 +352,24 @@ class PantallaPrincipal(tk.Frame):
             self.on_ir_login()
         else:
             self._mostrar_estado("Login no disponible en vista aislada", es_error=True)
+
+    def actualizar_admin(self, es_admin):
+        """Muestra el enlace ADMIN solo si la sesión activa es de administrador."""
+        self.es_admin = bool(es_admin)
+        enlace = getattr(self, "_link_admin", None)
+        if enlace is None or not enlace.winfo_exists():
+            return
+        if self.es_admin:
+            if not enlace.winfo_manager():
+                enlace.pack(side="left", padx=8)
+        elif enlace.winfo_manager():
+            enlace.pack_forget()
+
+    def _abrir_perfil(self):
+        if self.on_ver_perfil:
+            self.on_ver_perfil()
+        else:
+            self._mostrar_estado("Mi perfil no disponible en vista aislada", es_error=True)
 
     def _ir_admin(self):
         if self.on_ir_admin:

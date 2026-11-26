@@ -30,7 +30,10 @@ import tkinter as tk
 import socket
 
 try:
-    from vistas.estilos import BG_DARK
+    from vistas.estilos import (
+        BG_DARK, DARK_CARD, GREEN, WHITE,
+        FUENTE_TITULO, FUENTE_BODY, FUENTE_BOTON,
+    )
     from vistas.login_vista import PantallaLogin
     from vistas.interfaz_crear_cuenta import PantallaCrearCuenta
     from vistas.interfaz_principal import PantallaPrincipal
@@ -38,6 +41,7 @@ try:
     from vistas.chat_vista import PantallaChat
     from vistas.interfaz_admin import PantallaAdmin
     from vistas.carrito_vista import carrito as PantallaCarrito
+    from vistas.mi_perfil_vista import PantallaMiPerfil
     from vistas.lista_deseos_vista import PantallaListaDeseos
     from vistas.pedidos_vista import PantallaPedidos, abrir_ventana_pedidos
     from vistas.toast import mostrar_toast
@@ -60,7 +64,10 @@ try:
     except ImportError:
         RUTA_VENTAS_JSON, cargar_json, guardar_json = None, None, None
 except ImportError:  # fallback cuando se ejecuta con cwd=vistas/
-    from estilos import BG_DARK
+    from estilos import (
+        BG_DARK, DARK_CARD, GREEN, WHITE,
+        FUENTE_TITULO, FUENTE_BODY, FUENTE_BOTON,
+    )
     from login_vista import PantallaLogin
     from interfaz_crear_cuenta import PantallaCrearCuenta
     from interfaz_principal import PantallaPrincipal
@@ -68,6 +75,7 @@ except ImportError:  # fallback cuando se ejecuta con cwd=vistas/
     from chat_vista import PantallaChat
     from interfaz_admin import PantallaAdmin
     from carrito_vista import carrito as PantallaCarrito
+    from mi_perfil_vista import PantallaMiPerfil
     from lista_deseos_vista import PantallaListaDeseos
     from pedidos_vista import PantallaPedidos, abrir_ventana_pedidos
     try:
@@ -714,6 +722,7 @@ class RetroVaultApp:
         # que se inicie sesión otra vez.
         self._id_remoto = "invitado"
         self.mostrar_principal()
+        self._actualizar_visibilidad_admin()
         # El toast vive en la raíz así que sobrevive al cambio de pantalla
         _toast(self.root, "Sesión cerrada", tipo="info")
     # acciones del carrito  
@@ -934,6 +943,7 @@ class RetroVaultApp:
             on_ver_deseos=self.mostrar_lista_deseos,
             on_ver_avisos=self.mostrar_avisos,
             on_ver_pedidos=self.mostrar_mis_pedidos,
+            on_ver_perfil=self.mostrar_mi_perfil,
             usuario_actual=self.usuario_actual,
             es_admin=self._es_admin(),
             on_cerrar_sesion=self.cerrar_sesion,
@@ -1025,6 +1035,64 @@ class RetroVaultApp:
             on_volver=self.mostrar_principal,
         )
         pantalla.pack(fill="both", expand=True)
+
+    def mostrar_mi_perfil(self):
+        """Perfil del usuario activo: datos, pedidos y lista de deseados."""
+        self._limpiar_contenedor()
+        pantalla = PantallaMiPerfil(
+            self.contenedor,
+            usuario=self.usuario_actual,
+            gestor_usuarios=self.gestor_usuarios,
+            lista_deseos=self.lista_deseos,
+            inventario=self.inventario,
+            obtener_pedidos=self._pedidos_para_cliente,
+            on_volver=self.mostrar_principal,
+            on_ir_login=lambda: self._ir_a_login_preservando_carrito(destino="principal"),
+            on_quitar=self._quitar_deseo,
+            on_ver_producto=self._mostrar_detalle_producto,
+            on_agregar_carro=self._agregar_al_carrito,
+        )
+        pantalla.pack(fill="both", expand=True)
+
+    def _mostrar_detalle_producto(self, producto):
+        """Ventana liviana con el detalle de un producto de la lista de deseados."""
+        ventana = tk.Toplevel(self.root)
+        ventana.title("Detalle del producto")
+        ventana.configure(bg=BG_DARK)
+        ventana.resizable(False, False)
+        ventana.transient(self.root)
+
+        tk.Label(
+            ventana, text=str(producto.nombre), font=FUENTE_TITULO,
+            bg=BG_DARK, fg=GREEN, wraplength=380, justify="left",
+        ).pack(anchor="w", padx=20, pady=(20, 10))
+
+        lineas = [
+            f"ID: {getattr(producto, 'id', '-')}",
+            f"Categoría: {getattr(producto, 'categoria', '') or '-'}",
+            f"Precio: ${float(getattr(producto, 'precio', 0) or 0):,.0f}".replace(",", "."),
+            f"Stock: {getattr(producto, 'stock', 0)}",
+        ]
+        descripcion = getattr(producto, "descripcion", "")
+        if descripcion:
+            lineas.append(f"Descripción: {descripcion}")
+        tk.Label(
+            ventana, text="\n".join(lineas), font=FUENTE_BODY,
+            bg=BG_DARK, fg=WHITE, justify="left", anchor="w", wraplength=380,
+        ).pack(anchor="w", padx=20)
+
+        tk.Button(
+            ventana, text="CERRAR", font=FUENTE_BOTON, bg=DARK_CARD, fg=WHITE,
+            relief="flat", bd=0, cursor="hand2", command=ventana.destroy,
+        ).pack(pady=(14, 20), ipady=6)
+
+    def _actualizar_visibilidad_admin(self):
+        """Sincroniza el enlace ADMIN con la sesión vigente en la vista abierta."""
+        es_admin = self._es_admin()
+        for vista in self.contenedor.winfo_children():
+            actualizar = getattr(vista, "actualizar_admin", None)
+            if callable(actualizar):
+                actualizar(es_admin)
 
     def _abrir_pedidos_admin(self):
         if self.gestor_pedidos is None:
@@ -1178,6 +1246,7 @@ class RetroVaultApp:
             self.mostrar_carrito()
         else:
             self.mostrar_principal()
+        self._actualizar_visibilidad_admin()
 
     def _al_registrarse(self, datos_usuario):
         # Los nuevos registros son siempre "normal"; mismo merge de invitado.
@@ -1205,6 +1274,7 @@ class RetroVaultApp:
             self.mostrar_carrito()
         else:
             self.mostrar_principal()
+        self._actualizar_visibilidad_admin()
 
 
 if __name__ == "__main__":

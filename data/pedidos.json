@@ -94,5 +94,21 @@
         "total": 5712.0,
         "estado": "Pendiente",
         "fecha": "2026-11-26T19:45:34"
+    },
+    {
+        "id_pedido": "P-000007",
+        "id_venta": 36,
+        "cliente": "fdas@gmail.com",
+        "items": [
+            {
+                "id": 5,
+                "nombre": "perro caliente",
+                "precio": 1200.0,
+                "cantidad": 5
+            }
+        ],
+        "total": 7140.0,
+        "estado": "Pendiente",
+        "fecha": "2026-11-26T20:30:02"
     }
 ]
