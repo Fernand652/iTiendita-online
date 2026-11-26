@@ -9,13 +9,19 @@ except ImportError:
 
 class PantallaListaDeseos(tk.Frame):
     def __init__(self, parent, inventario, lista_deseos, usuario, on_volver=None,
-                 on_agregar_carro=None):
+                 on_agregar_carro=None, on_quitar=None):
         super().__init__(parent, bg=BG_DARK)
         self.inventario = inventario
         self.lista_deseos = lista_deseos
         self.usuario = usuario
         self.on_volver = on_volver
         self.on_agregar_carro = on_agregar_carro
+        self.on_quitar = on_quitar
+        self._crear()
+
+    def refrescar(self):
+        for widget in self.winfo_children():
+            widget.destroy()
         self._crear()
 
     def _crear(self):
@@ -43,6 +49,14 @@ class PantallaListaDeseos(tk.Frame):
             tk.Label(tarjeta, text=producto.nombre, font=FUENTE_NOMBRE, bg=DARK_CARD, fg=WHITE).pack(anchor="w")
             tk.Label(tarjeta, text=f"${producto.precio:,.0f} · {estado}".replace(",", "."),
                      font=FUENTE_BODY, bg=DARK_CARD, fg=GRAY_TEXT).pack(anchor="w", pady=(4, 0))
+            if self.on_quitar:
+                if producto.id in self.lista_deseos.datos_de(self.usuario)["favoritos"]:
+                    tk.Button(tarjeta, text="QUITAR FAVORITO", bg=GRAY_BTN, fg=WHITE,
+                              command=lambda p=producto: self._quitar(p, False)).pack(anchor="e", pady=3)
+                if self.lista_deseos.es_suscriptor(self.usuario, producto.id):
+                    tk.Button(tarjeta, text="CANCELAR SUSCRIPCIÓN", bg=GRAY_BTN, fg=WHITE,
+                              command=lambda p=producto: self._quitar(p, True)).pack(anchor="e", pady=3)
+
             if producto.stock > 0 and self.on_agregar_carro:
                 tk.Button(tarjeta, text="MOVER AL CARRITO", font=FUENTE_BOTON,
                           bg=GREEN, fg=BLACK, relief="flat",
@@ -52,3 +66,9 @@ class PantallaListaDeseos(tk.Frame):
         resultado = self.on_agregar_carro(producto)
         if isinstance(resultado, tuple) and not resultado[0]:
             return
+
+    def _quitar(self, producto, suscripcion):
+        from vistas.toast import mostrar_toast
+        ok, mensaje = self.on_quitar(producto, suscripcion)
+        self.refrescar()
+        mostrar_toast(self, mensaje, tipo="info" if ok else "error")

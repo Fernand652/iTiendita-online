@@ -277,6 +277,25 @@ class PantallaAdmin(tk.Frame):
             command=self._abrir_tarifas,
         ).pack(side="right", padx=(0, 8), ipadx=8, ipady=4)
 
+        # Reparte las acciones en filas según el ancho disponible.
+        acciones = list(fila_vista.winfo_children())
+        for widget in acciones:
+            widget.pack_forget()
+        total = acciones.pop(0)
+
+        def distribuir(evento):
+            columnas = max(1, min(len(acciones), evento.width // 210))
+            total.grid(row=0, column=0, columnspan=columnas, sticky="w", pady=(0, 8))
+            for columna in range(len(acciones)):
+                fila_vista.columnconfigure(columna, weight=1 if columna < columnas else 0,
+                                           uniform="acciones" if columna < columnas else "")
+            for indice, widget in enumerate(acciones):
+                widget.grid(row=1 + indice // columnas, column=indice % columnas,
+                            sticky="ew", padx=3, pady=4)
+        fila_vista.bind("<Configure>", distribuir)
+        for indice, widget in enumerate(acciones):
+            widget.grid(row=indice, column=0, sticky="ew", padx=3, pady=4)
+
         self._crear_reportes(panel)
 
     def _alternar_vista_carritos(self):
@@ -465,7 +484,11 @@ class PantallaAdmin(tk.Frame):
 
         tk.Button(formulario, text="CREAR CUPÓN", font=FUENTE_BOTON, command=crear,
                   bg=GREEN, fg=BLACK, relief="flat").pack(fill="x", ipady=6)
-        refrescar()
+        def actualizar_usos():
+            if ventana.winfo_exists():
+                refrescar()
+                ventana.after(1000, actualizar_usos)
+        actualizar_usos()
 
     def _abrir_tarifas(self):
         ventana = tk.Toplevel(self)
@@ -590,7 +613,7 @@ class PantallaAdmin(tk.Frame):
     def _configurar_columnas_inventario(self):
         encabezados = {
             "id": ("ID", 40, "center"), "nombre": ("Nombre", 200, "w"),
-            "precio": ("Precio", 90, "e"), "stock": ("Stock", 70, "center"),
+            "precio": ("Precio", 110, "e"), "stock": ("Stock / Espera", 155, "center"),
             "categoria": ("Categoría", 110, "w"), "foto": ("📷", 40, "center"),
         }
         for columna, (texto, ancho, ancla) in encabezados.items():

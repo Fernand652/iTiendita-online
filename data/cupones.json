@@ -1,0 +1,10 @@
+[
+    {
+        "codigo": "SILVESTRE90",
+        "tipo": "porcentaje",
+        "valor": 90.0,
+        "fecha_vencimiento": "2027-01-01",
+        "usos_maximos": 5,
+        "usos": 1
+    }
+]

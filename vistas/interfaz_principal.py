@@ -172,7 +172,7 @@ class PantallaPrincipal(tk.Frame):
                            hace click en "Añadir al Carro".
     """
 
-    def __init__(self, parent, inventario=None, on_agregar_carro=None, on_ir_admin=None, on_ver_carrito=None, on_ir_explorar=None, on_ir_chat=None, on_favorito=None, on_suscribir=None, on_ver_deseos=None, usuario_actual=None, es_admin=False, on_cerrar_sesion=None, on_ir_login=None, on_ver_pedidos=None):
+    def __init__(self, parent, inventario=None, on_agregar_carro=None, on_ir_admin=None, on_ver_carrito=None, on_ir_explorar=None, on_ir_chat=None, on_favorito=None, on_suscribir=None, on_ver_deseos=None, usuario_actual=None, es_admin=False, on_cerrar_sesion=None, on_ir_login=None, on_ver_pedidos=None, on_ver_avisos=None):
         super().__init__(parent, bg=BG_DARK)
         # Acepta tanto lista de productos como instancia de Inventario
         if inventario is None:
@@ -190,6 +190,7 @@ class PantallaPrincipal(tk.Frame):
         self.on_suscribir = on_suscribir
         self.on_ver_deseos = on_ver_deseos
         self.on_ver_pedidos = on_ver_pedidos
+        self.on_ver_avisos = on_ver_avisos
         self.usuario_actual = usuario_actual
         self.es_admin = bool(es_admin)
         self.on_cerrar_sesion = on_cerrar_sesion
@@ -218,20 +219,19 @@ class PantallaPrincipal(tk.Frame):
     # NAVBAR
     def _crear_navbar(self):
         navbar = tk.Frame(self, bg=BG_DARK)
-        navbar.pack(fill="x", padx=40, pady=20)
+        navbar.pack(fill="x", padx=24, pady=16)
 
         tk.Label(
             navbar, text="RETRO VAULT", font=FUENTE_LOGO, bg=BG_DARK, fg=GREEN
         ).pack(side="left")
 
         nav_links = tk.Frame(navbar, bg=BG_DARK)
-        nav_links.pack(side="left", padx=40)
+        nav_links.pack(side="left", padx=16)
 
         self._link_nav(nav_links, "INICIO", activo=True).pack(side="left", padx=8)
         link_categorias = self._link_nav(nav_links, "CATEGORIAS")
         link_categorias.pack(side="left", padx=8)
         link_categorias.bind("<Button-1>", lambda e: self._ir_explorar(limpio=True))
-        self._link_nav(nav_links, "CONTACTANOS").pack(side="left", padx=8)
 
         # ADMIN oculto para usuarios normales: solo se crea si es_admin
         if self.es_admin:
@@ -244,11 +244,11 @@ class PantallaPrincipal(tk.Frame):
             navbar, bg=BG_DARK, highlightbackground=GREEN,
             highlightcolor=GREEN, highlightthickness=1
         )
-        buscador_frame.pack(side="left", padx=20)
+        buscador_frame.pack(side="left", padx=12)
 
         self.buscador = tk.Entry(
             buscador_frame, bg=BG_DARK, fg=GRAY_TEXT, relief="flat",
-            insertbackground=WHITE, width=22, bd=6
+            insertbackground=WHITE, width=18, bd=6
         )
         self.buscador.insert(0, "Search")
         self.buscador.pack(side="left", ipady=4)
@@ -289,6 +289,12 @@ class PantallaPrincipal(tk.Frame):
             deseos.pack(side="left", padx=4)
             deseos.bind("<Button-1>", lambda e: self.on_ver_deseos())
 
+        if self.usuario_actual is not None and self.on_ver_avisos is not None:
+            avisos = tk.Label(iconos, text="NOTIFICACIONES", font=FUENTE_NAV,
+                              bg=GRAY_BTN, fg=WHITE, padx=10, pady=6, cursor="hand2")
+            avisos.pack(side="left", padx=4)
+            avisos.bind("<Button-1>", lambda e: self.on_ver_avisos())
+
         nombre = self.usuario_actual or "Invitado"
         lbl_user = tk.Label(
             iconos, text=f"👤 {nombre}", font=FUENTE_NAV,
@@ -305,6 +311,37 @@ class PantallaPrincipal(tk.Frame):
             lbl_salir.bind("<Button-1>", lambda e: self._ir_login())
         else:
             lbl_salir.bind("<Button-1>", lambda e: self._cerrar_sesion())
+
+        # Conserva tamaños naturales y orden; baja los accesos solo si no caben.
+        grupos = list(navbar.winfo_children())
+        for grupo in grupos:
+            grupo.pack_forget()
+        accesos = list(iconos.winfo_children())
+        for acceso in accesos:
+            acceso.pack_forget()
+        def distribuir(evento):
+            ancho = evento.width
+            fila, columna, ocupado = 0, 0, 0
+            for acceso in accesos:
+                requerido = acceso.winfo_reqwidth() + 8
+                if ocupado and ocupado + requerido > ancho:
+                    fila, columna, ocupado = fila + 1, 0, 0
+                acceso.grid(row=fila, column=columna, padx=4, pady=2, sticky="w")
+                columna += 1
+                ocupado += requerido
+            izquierda = sum(g.winfo_reqwidth() + 16 for g in grupos[:-1])
+            derecha = sum(a.winfo_reqwidth() + 8 for a in accesos)
+            compacta = izquierda + derecha <= ancho
+            for i, grupo in enumerate(grupos[:-1]):
+                grupo.grid(row=0, column=i, sticky="w", padx=(0, 16))
+            iconos.grid(row=0 if compacta else 1, column=3 if compacta else 0,
+                        columnspan=1 if compacta else 4, sticky="e",
+                        pady=(0 if compacta else 8, 0))
+            navbar.columnconfigure(3, weight=1)
+        navbar.bind("<Configure>", distribuir)
+        for i, grupo in enumerate(grupos):
+            grupo.grid(row=0, column=i, sticky="w")
+
 
     def _ir_login(self):
         if self.on_ir_login:

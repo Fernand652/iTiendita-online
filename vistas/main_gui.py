@@ -189,6 +189,8 @@ class RetroVaultApp:
         # Foto del catálogo, para detectar cuándo lo editamos y avisarle a
         # los clientes conectados.
         self._huella_catalogo = self._calcular_huella()
+        self._catalogo_avisos_local = {p.id: (p.nombre, p.precio, p.stock)
+                                      for p in self.inventario.productos}
 
         self.contenedor = tk.Frame(root, bg=BG_DARK)
         self.contenedor.pack(fill="both", expand=True)
@@ -199,6 +201,36 @@ class RetroVaultApp:
         # Con sockets hay que estar escuchando la bandeja con root.after.
         if self.servidor is not None or self.conexion is not None:
             self._bombeo_de_eventos()
+        if self.conexion is None:
+            self._revisar_avisos_locales()
+
+    def _revisar_avisos_locales(self):
+        """En modo local también detecta cambios y entrega avisos por sesión."""
+        if self.servidor is None:
+            actual = {p.id: (p.nombre, p.precio, p.stock)
+                      for p in self.inventario.productos}
+            for pid, (nombre, precio, stock) in actual.items():
+                anterior = self._catalogo_avisos_local.get(pid)
+                if anterior is None:
+                    continue
+                eventos = []
+                if anterior[2] <= 0 < stock:
+                    eventos.append(("reposicion", f"{nombre} ya está disponible",
+                                    self.lista_deseos.usuarios_suscritos(pid)))
+                if precio < anterior[1]:
+                    eventos.append(("rebaja", f"{nombre} bajó de ${anterior[1]:,.0f} a ${precio:,.0f}",
+                                    self.lista_deseos.usuarios_con_favorito(pid)))
+                for tipo, texto, usuarios in eventos:
+                    for usuario in usuarios:
+                        self.lista_deseos.guardar_aviso(usuario, {
+                            "type": "notificacion", "tipo": tipo,
+                            "mensaje": texto, "id_producto": pid})
+            self._catalogo_avisos_local = actual
+        if self.usuario_actual:
+            for aviso in self.lista_deseos.avisos_pendientes(self.usuario_actual):
+                self._mostrar_notificacion(aviso)
+                self.lista_deseos.confirmar_aviso(self.usuario_actual, aviso["id_aviso"])
+        self.root.after(500, self._revisar_avisos_locales)
 
     # ------------------------------------------------------------------
     # AVISOS POR SOCKET
@@ -319,13 +351,20 @@ class RetroVaultApp:
                 pass
         elif tipo == T_DESEOS:
             if self.conexion is not None:
+                self.lista_deseos._datos(self.usuario_actual or self._id_remoto)["historial"] = list(mensaje.get("historial") or [])
                 self.lista_deseos.reemplazar_datos(self.usuario_actual or self._id_remoto,
                                                     mensaje.get("favoritos"), mensaje.get("suscripciones"))
                 if mensaje.get("mensaje"):
                     _toast(self.root, mensaje["mensaje"], tipo="exito" if mensaje.get("ok") else "error")
             self._refrescar_admin()
+            for vista in self.contenedor.winfo_children():
+                if isinstance(vista, PantallaListaDeseos):
+                    vista.refrescar()
         elif tipo == T_NOTIFICACION:
             self._mostrar_notificacion(mensaje)
+            if self.conexion is not None and mensaje.get("id_aviso"):
+                from red.protocolo import T_AVISO_RECIBIDO
+                self.conexion.enviar({"type": T_AVISO_RECIBIDO, "id_aviso": mensaje["id_aviso"]})
         elif tipo == T_STOCK:
             producto = self.inventario.buscar_por_id(mensaje.get("id"))
             if producto is not None:
@@ -346,6 +385,8 @@ class RetroVaultApp:
                 return
             self._aplicar_carrito_del_servidor(mensaje.get("items") or [])
         elif tipo == T_PAGO_OK:
+            if self._pantalla_carrito is not None:
+                self._pantalla_carrito.resolver_pago(True, "Compra confirmada por el servidor")
             detalle = f"¡Compra confirmada! Total: ${mensaje.get('total', 0):,.0f}"
             if mensaje.get("id_pedido"):
                 detalle += (f" | Pedido {mensaje['id_pedido']} "
@@ -370,16 +411,22 @@ class RetroVaultApp:
             if self._pantalla_chat is not None:
                 self._pantalla_chat.recibir_respuesta(mensaje)
         elif tipo == T_DESCONECTADO:
+            if self._pantalla_carrito is not None:
+                self._pantalla_carrito.resolver_pago(False, "Conexión perdida: verifica tus pedidos antes de reintentar")
             _toast(self.root, "Se perdió la conexión con el servidor", tipo="error")
             # si el chat estaba esperando, se le avisa para no dejarlo trabado
             if self._pantalla_chat is not None:
                 self._pantalla_chat.recibir_respuesta(
                     {"error": "Se perdió la conexión con el servidor."})
         elif tipo == T_ERROR:
+            if self._pantalla_carrito is not None:
+                self._pantalla_carrito.resolver_pago(False, mensaje.get("mensaje", "Pago rechazado"))
             _toast(self.root, mensaje.get("mensaje", "Error del servidor"),
                    tipo="error")
 
     def _mostrar_notificacion(self, mensaje):
+        if self.usuario_actual and mensaje.get("id_aviso"):
+            self.lista_deseos.registrar_historial(self.usuario_actual, mensaje)
         texto = mensaje.get("mensaje", "Tienes una novedad en tus productos guardados")
         _toast(self.root, texto, tipo="info")
         if mensaje.get("tipo") != "reposicion":
@@ -621,14 +668,9 @@ class RetroVaultApp:
                 return False, "Sin conexión con el servidor"
             # Con sockets el SERVER es quien cobra y descuenta. El despacho
             # viaja en el mismo mensaje para que la venta quede completa.
-            try:
-                self.conexion.pagar(run, despacho, codigo_cupon)
-            except TypeError:
-                try:
-                    self.conexion.pagar(run)
-                except TypeError:
-                    self.conexion.pagar()
-            return True
+            if not self.conexion.pagar(run, despacho, codigo_cupon):
+                return False, "No se pudo enviar el pago"
+            return None, "Esperando confirmación del servidor…"
         descuento = 0.0
         if codigo_cupon:
             subtotal = self._calcular_total_carrito(self.carrito)
@@ -705,6 +747,7 @@ class RetroVaultApp:
             on_favorito=self._guardar_favorito,
             on_suscribir=self._suscribirse_reposicion,
             on_ver_deseos=self.mostrar_lista_deseos,
+            on_ver_avisos=self.mostrar_avisos,
             on_ver_pedidos=self.mostrar_mis_pedidos,
             usuario_actual=self.usuario_actual,
             es_admin=self._es_admin(),
@@ -760,7 +803,23 @@ class RetroVaultApp:
         self._limpiar_contenedor()
         PantallaListaDeseos(self.contenedor, self.inventario, self.lista_deseos,
                             self.usuario_actual, on_volver=self.mostrar_principal,
-                            on_agregar_carro=self._agregar_al_carrito).pack(fill="both", expand=True)
+                            on_agregar_carro=self._agregar_al_carrito,
+                            on_quitar=self._quitar_deseo).pack(fill="both", expand=True)
+
+    def mostrar_avisos(self):
+        from vistas.avisos_vista import abrir_avisos
+        if self.usuario_actual:
+            usuario = self.usuario_actual
+            abrir_avisos(self.root, lambda: self.lista_deseos.datos_de(usuario)["historial"]
+                         if self.usuario_actual == usuario else [])
+
+    def _quitar_deseo(self, producto, suscripcion=False):
+        from red.protocolo import T_QUITAR_DESEO, T_CANCELAR_SUSCRIPCION
+        if self.conexion is not None:
+            enviado = self.conexion.enviar({"type": T_CANCELAR_SUSCRIPCION if suscripcion else T_QUITAR_DESEO,
+                                           "id": producto.id})
+            return enviado, "Solicitud enviada" if enviado else "Sin conexión con el servidor"
+        return self.lista_deseos.quitar(self.usuario_actual, producto.id, suscripcion)
 
     def _pedidos_para_cliente(self):
         """Pedidos que debe ver el cliente: los del socket o los locales."""

@@ -45,6 +45,25 @@ class TestListaDeseos(unittest.TestCase):
         self.assertEqual(recargada.productos_de("ana"), {3, 8})
         self.assertTrue(recargada.es_suscriptor("ana", 8))
 
+    def test_quitar_favorito_conserva_suscripcion(self):
+        self.lista.guardar_favorito("ana", 4)
+        self.lista.suscribirse("ana", 4)
+        self.lista.quitar("ana", 4)
+        self.assertEqual(self.lista.datos_de("ana")["favoritos"], [])
+        self.assertEqual(self.lista.cantidad_esperando(4), 1)
+        self.lista.quitar("ana", 4, suscripcion=True)
+        self.assertEqual(self.lista.cantidad_esperando(4), 0)
+        self.assertEqual(ListaDeseos(self.ruta).productos_de("ana"), set())
+
+    def test_aviso_persiste_hasta_confirmacion_del_destinatario(self):
+        aviso = self.lista.guardar_aviso("ana", {"type": "notificacion", "mensaje": "Disponible"})
+        otra = ListaDeseos(self.ruta)
+        self.assertEqual(otra.avisos_pendientes("ana"), [aviso])
+        otra.confirmar_aviso("beto", aviso["id_aviso"])
+        self.assertEqual(otra.avisos_pendientes("ana"), [aviso])
+        otra.confirmar_aviso("ana", aviso["id_aviso"])
+        self.assertEqual(ListaDeseos(self.ruta).avisos_pendientes("ana"), [])
+
 
 if __name__ == "__main__":
     unittest.main()

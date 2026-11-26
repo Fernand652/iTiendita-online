@@ -668,14 +668,30 @@ class carrito(tk.Frame):
 
     def _generar_comprobante(self):
         modal = tk.Toplevel(self)
-        modal.title("Comprobante de Venta")
+        modal.title("Confirmar compra")
         modal.geometry("480x640")
         modal.configure(bg=DARK_CARD)
-        modal.resizable(False, False)
+        modal.resizable(True, True)
         modal.transient(self)
         modal.grab_set()
 
-        tk.Label(modal, text="COMPROBANTE DE COMPRA", font=FUENTE_TITULO, bg=DARK_CARD, fg=GREEN).pack(pady=(20, 5))
+        ventana = modal
+        ventana.geometry(f"480x{min(720, self.winfo_screenheight() - 100)}")
+        acciones_pago = tk.Frame(ventana, bg=DARK_CARD)
+        acciones_pago.pack(side="bottom", fill="x")
+        zona = tk.Frame(ventana, bg=DARK_CARD)
+        zona.pack(fill="both", expand=True)
+        lienzo = tk.Canvas(zona, bg=DARK_CARD, highlightthickness=0)
+        barra = tk.Scrollbar(zona, orient="vertical", command=lienzo.yview)
+        barra.pack(side="right", fill="y")
+        lienzo.pack(side="left", fill="both", expand=True)
+        lienzo.configure(yscrollcommand=barra.set)
+        modal = tk.Frame(lienzo, bg=DARK_CARD)
+        contenido = lienzo.create_window((0, 0), window=modal, anchor="nw")
+        modal.bind("<Configure>", lambda e: lienzo.configure(scrollregion=lienzo.bbox("all")))
+        lienzo.bind("<Configure>", lambda e: lienzo.itemconfigure(contenido, width=e.width))
+
+        tk.Label(modal, text="RESUMEN DE COMPRA", font=FUENTE_TITULO, bg=DARK_CARD, fg=GREEN).pack(pady=(20, 5))
         cliente = self.usuario_actual or "Cliente General"
         tk.Label(modal, text=f"Cliente: {cliente}", font=FUENTE_BODY, bg=DARK_CARD, fg=WHITE).pack(pady=(0, 2))
         if self._run_ingresado():
@@ -763,13 +779,26 @@ class carrito(tk.Frame):
             add_linea("Subtotal neto:", f"${neto_fmt}")
         add_linea("Envío:", f"${envio_str}")
         add_linea("IVA (19%):", f"${iva_str}")
-        add_linea("TOTAL PAGADO:", f"${tot_str}", color=GREEN)
+        add_linea("TOTAL A PAGAR:", f"${tot_str}", color=GREEN)
 
         lbl_error_modal = tk.Label(
             modal, text="", font=FUENTE_BODY, bg=DARK_CARD, fg="#ff6b6b",
             wraplength=420, justify="left"
         )
         lbl_error_modal.pack(fill="x", padx=30)
+
+        def terminar(ok, mensaje):
+            self._pago_respuesta = None
+            if not ventana.winfo_exists():
+                return
+            if ok:
+                ventana.destroy()
+                self.lista_actual = []
+                self.actualizar_carrito([])
+                self._mostrar_mensaje(mensaje, tipo="exito")
+            else:
+                boton.config(state="normal")
+                lbl_error_modal.config(text=mensaje)
 
         def confirmar():
             # Distinción con/sin RUT: vacío = boleta sin RUT (se guarda ""),
@@ -789,35 +818,34 @@ class carrito(tk.Frame):
             if self.on_pagar_confirmado is not None:
                 despacho = self.despacho_actual.to_dict()
                 codigo_cupon = self.cupon_activo.codigo if self.cupon_activo else None
-                try:
-                    resultado = self.on_pagar_confirmado(run_cliente, despacho, codigo_cupon)
-                except TypeError:
-                    try:
-                        resultado = self.on_pagar_confirmado(run_cliente)
-                    except TypeError:
-                        resultado = self.on_pagar_confirmado()
+                boton.config(state="disabled")
+                self._pago_respuesta = terminar
+                resultado = self.on_pagar_confirmado(run_cliente, despacho, codigo_cupon)
                 ok, mensaje = resultado if isinstance(resultado, tuple) else (resultado, "Venta registrada para el ADMIN")
-                if ok:
-                    modal.destroy()
-                    self.lista_actual = []
-                    self.actualizar_carrito([])
-                    self._mostrar_mensaje(mensaje, tipo="exito")
+                if ok is None:
+                    lbl_error_modal.config(text=mensaje)
                 else:
-                    lbl_error_modal.config(text=mensaje or "No se pudo registrar la venta. Intenta nuevamente.")
+                    terminar(ok, mensaje)
                 return
 
             if self.on_pagar:
-                modal.destroy()
+                ventana.destroy()
                 self.on_pagar()
                 return
-            modal.destroy()
+            ventana.destroy()
 
-        tk.Button(
-            modal, text="ACEPTAR", font=FUENTE_BOTON_GRANDE,
+        boton = tk.Button(
+            acciones_pago, text="CONFIRMAR Y PAGAR", font=FUENTE_BOTON_GRANDE,
             bg=GREEN, fg=BLACK, activebackground=GREEN_HOVER,
             activeforeground=BLACK, relief="flat", bd=0,
             highlightthickness=0, cursor="hand2", command=confirmar
-        ).pack(fill="x", padx=30, pady=(12, 20), ipady=12)
+        )
+        boton.pack(fill="x", padx=30, pady=(12, 20), ipady=12)
+
+    def resolver_pago(self, ok, mensaje):
+        respuesta = getattr(self, "_pago_respuesta", None)
+        if respuesta is not None:
+            respuesta(ok, mensaje)
 
     def pagar(self):
         if not self.lista_actual:

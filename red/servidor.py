@@ -49,6 +49,7 @@ import queue
 import socket
 import threading
 import time 
+from red.protocolo import T_QUITAR_DESEO, T_CANCELAR_SUSCRIPCION, T_AVISO_RECIBIDO
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -375,6 +376,16 @@ class ServidorCarritos(threading.Thread):
                         self._procesar_deseo(conexion, usuario, mensaje)
                     elif tipo == T_SUSCRIBIR_REPOSICION:
                         self._procesar_deseo(conexion, usuario, mensaje, suscripcion=True)
+                    elif tipo in (T_QUITAR_DESEO, T_CANCELAR_SUSCRIPCION):
+                        with self._lock:
+                            ok, texto = self.lista_deseos.quitar(usuario, mensaje.get("id"),
+                                                               tipo == T_CANCELAR_SUSCRIPCION)
+                            datos = self.lista_deseos.datos_de(usuario)
+                        self._enviar(conexion, dict(type=T_DESEOS, ok=ok, mensaje=texto, **datos))
+                        self.eventos.put({"type": T_DESEOS})
+                    elif tipo == T_AVISO_RECIBIDO:
+                        with self._lock:
+                            self.lista_deseos.confirmar_aviso(usuario, mensaje.get("id_aviso"))
         except (OSError, ValueError):
             # Cliente cerró la ventana o se cortó el cable. No es un error de
             # verdad, es la forma normal de terminar una conexión.
@@ -408,6 +419,10 @@ class ServidorCarritos(threading.Thread):
         self._enviar(conexion, {"type": T_TARIFAS,
                      "config": self.gestor_tarifas.config})
         self._enviar(conexion, {"type": T_DESEOS, **self.lista_deseos.datos_de(usuario)})
+        with self._lock:
+            pendientes = self.lista_deseos.avisos_pendientes(usuario)
+        for aviso in pendientes:
+            self._enviar(conexion, aviso)
         self._enviar(conexion, {"type": T_PEDIDOS,
                      "pedidos": self.gestor_pedidos.de_cliente(usuario)})
         self._difundir_carritos()
@@ -754,14 +769,18 @@ class ServidorCarritos(threading.Thread):
             if viejo["stock"] <= 0 < nuevo["stock"]:
                 aviso = Notificacion("reposicion", f"{nuevo['nombre']} ya está disponible", id_producto=pid)
                 for usuario in self.lista_deseos.usuarios_suscritos(pid):
+                    with self._lock:
+                        pendiente = self.lista_deseos.guardar_aviso(usuario, aviso.to_dict())
                     if usuario in conexiones:
-                        self._enviar(conexiones[usuario], aviso.to_dict())
+                        self._enviar(conexiones[usuario], pendiente)
             if nuevo["precio"] < viejo["precio"]:
                 texto = f"{nuevo['nombre']} bajó de ${viejo['precio']:,.0f} a ${nuevo['precio']:,.0f}"
                 aviso = Notificacion("rebaja", texto, id_producto=pid)
                 for usuario in self.lista_deseos.usuarios_con_favorito(pid):
+                    with self._lock:
+                        pendiente = self.lista_deseos.guardar_aviso(usuario, aviso.to_dict())
                     if usuario in conexiones:
-                        self._enviar(conexiones[usuario], aviso.to_dict())
+                        self._enviar(conexiones[usuario], pendiente)
 
     def difundir_cupones(self):
         """Actualiza el catálogo de cupones en cada caja conectada."""

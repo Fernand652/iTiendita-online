@@ -62,5 +62,21 @@
         "total": 15468810.0,
         "estado": "Cancelado",
         "fecha": "2026-11-26T11:03:19"
+    },
+    {
+        "id_pedido": "P-000005",
+        "id_venta": 1,
+        "cliente": "admin",
+        "items": [
+            {
+                "id": 1,
+                "nombre": "asd",
+                "precio": 12000000.0,
+                "cantidad": 1
+            }
+        ],
+        "total": 1428000.0,
+        "estado": "Pendiente",
+        "fecha": "2026-11-26T17:36:21"
     }
 ]

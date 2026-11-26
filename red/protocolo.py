@@ -112,6 +112,9 @@ T_DESCONECTADO = "desconectado"
 # Aviso interno del cliente cuando se cae la conexión.
 
 T_DESEOS = "deseos"
+T_QUITAR_DESEO = "quitar_deseo"
+T_CANCELAR_SUSCRIPCION = "cancelar_suscripcion"
+T_AVISO_RECIBIDO = "aviso_recibido"
 # Lista de favoritos y suscripciones del usuario conectado.
 # {type, favoritos: [...], suscripciones: [...]}
 
