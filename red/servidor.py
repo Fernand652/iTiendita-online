@@ -782,6 +782,37 @@ class ServidorCarritos(threading.Thread):
             self.eventos.put({"type": T_PEDIDO_ESTADO, "pedido": pedido})
         return ok, mensaje, pedido
 
+    def cancelar_pedido(self, id_pedido):
+        """
+        Cancela un pedido antes de despacharlo y DEVUELVE su stock.
+
+        El pago descuenta el stock pero no lo devuelve; si el ADMIN cancela,
+        esas unidades tienen que volver al inventario y las demás cajas deben
+        enterarse por T_STOCK. El cliente dueño recibe el nuevo estado por
+        T_PEDIDO_ESTADO.
+        """
+        ok, mensaje, pedido = self.gestor_pedidos.cancelar(id_pedido)
+        if not ok or pedido is None:
+            return ok, mensaje, pedido
+
+        tocados = []
+        with self._lock:
+            for item in pedido.get("items") or []:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    id_producto = int(item.get("id"))
+                    cantidad = int(item.get("cantidad") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if cantidad > 0 and self.inventario.devolver_stock(id_producto, cantidad):
+                    tocados.append(id_producto)
+
+        self._difundir_stock(sorted(set(tocados)))
+        self._difundir_pedido_estado(pedido)
+        self.eventos.put({"type": T_PEDIDO_ESTADO, "pedido": pedido})
+        return ok, mensaje, pedido
+
     def _difundir_pedidos(self, usuario):
         pedidos = self.gestor_pedidos.de_cliente(usuario)
         mensaje = {"type": T_PEDIDOS, "pedidos": pedidos}

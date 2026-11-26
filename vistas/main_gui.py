@@ -786,6 +786,7 @@ class RetroVaultApp:
             self.contenedor,
             self.gestor_pedidos.todos,
             self._avanzar_pedido,
+            self._cancelar_pedido,
         )
 
     def _avanzar_pedido(self, id_pedido):
@@ -794,6 +795,36 @@ class RetroVaultApp:
         if self.gestor_pedidos is not None:
             return self.gestor_pedidos.avanzar(id_pedido)
         return False, "Pedidos no disponibles", None
+
+    def _cancelar_pedido(self, id_pedido):
+        """Cancela un pedido y devuelve su stock (red: lo hace el servidor)."""
+        if self.servidor is not None:
+            resultado = self.servidor.cancelar_pedido(id_pedido)
+        elif self.gestor_pedidos is not None:
+            resultado = self._cancelar_pedido_local(id_pedido)
+        else:
+            return False, "Pedidos no disponibles", None
+        if resultado and resultado[0]:
+            self._refrescar_admin()
+            self._refrescar_todas()
+            self._refrescar_pedidos()
+        return resultado
+
+    def _cancelar_pedido_local(self, id_pedido):
+        """Modo sin servidor: cancela y repone el stock en el mismo proceso."""
+        ok, mensaje, pedido = self.gestor_pedidos.cancelar(id_pedido)
+        if ok and pedido is not None:
+            for item in pedido.get("items") or []:
+                if not isinstance(item, dict):
+                    continue
+                try:
+                    id_producto = int(item.get("id"))
+                    cantidad = int(item.get("cantidad") or 0)
+                except (TypeError, ValueError):
+                    continue
+                if cantidad > 0:
+                    self.inventario.devolver_stock(id_producto, cantidad)
+        return ok, mensaje, pedido
 
     def mostrar_chat(self):
         self._limpiar_contenedor()

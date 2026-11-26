@@ -82,3 +82,15 @@ class GestorPedidos:
                         self._guardar()
                     return ok, mensaje, pedido.to_dict()
         return False, "Pedido no encontrado", None
+
+    def cancelar(self, id_pedido):
+        """Cancela un pedido antes de despacharlo y persiste el cambio."""
+        id_pedido = str(id_pedido)
+        with self._lock:
+            for pedido in self._pedidos:
+                if pedido.id_pedido == id_pedido:
+                    ok, mensaje, _restaurar = pedido.cancelar()
+                    if ok:
+                        self._guardar()
+                    return ok, mensaje, pedido.to_dict()
+        return False, "Pedido no encontrado", None

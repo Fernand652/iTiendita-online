@@ -25,7 +25,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from modelos.despacho import Despacho
 from modelos.inventario import Inventario
+from modelos.pedido import EstadoPedido
 from modelos.producto import Producto
+from persistencia.gestor_pedidos import GestorPedidos
 from persistencia.gestor_tarifas import GestorTarifas
 
 from red.protocolo import (
@@ -33,7 +35,7 @@ from red.protocolo import (
     items_a_lista, carrito_a_mensaje, normalizar_items as _norm,
     T_REGISTRO, T_CARRITO, T_QUITAR, T_VACIAR, T_PAGO,
     T_INVENTARIO, T_STOCK, T_CARRITO_ESTADO, T_PAGO_OK,
-    T_TARIFAS, T_CARRITOS, T_ERROR,
+    T_TARIFAS, T_CARRITOS, T_ERROR, T_PEDIDO_ESTADO,
 )
 from red import servidor as servidor_mod
 from red.servidor import ServidorCarritos
@@ -227,12 +229,18 @@ class TestServidorCarritos(unittest.TestCase):
             archivo=os.path.join(self.tempdir, "config_despacho.json")
         )
         Despacho.aplicar_config(Despacho.config_por_defecto())
+        # Pedidos en archivo temporal: los tests no deben ensuciar el
+        # data/pedidos.json real que usa la aplicación.
+        self.gestor_pedidos = GestorPedidos(
+            archivo=os.path.join(self.tempdir, "pedidos.json")
+        )
 
         # Loopback + puerto libre por test, así no se pisan entre sí.
         self.puerto = _puerto_libre()
         self.servidor = ServidorCarritos(
             inventario, host="127.0.0.1", puerto=self.puerto,
             gestor_tarifas=self.gestor_tarifas,
+            gestor_pedidos=self.gestor_pedidos,
         )
         self.servidor.start()
         self._esperar_arranque()
@@ -466,6 +474,53 @@ class TestServidorCarritos(unittest.TestCase):
         self.assertEqual(ventas[0]["despacho"]["direccion"], "Av. Siempre Viva 742")
         self.assertAlmostEqual(ventas[0]["envio"], 4990.0)
         self.assertAlmostEqual(ventas[0]["total"], 8318.1)
+
+    def _crear_pedido_pagado(self, cliente, usuario="ana", cantidad=2):
+        cliente.mandar_carrito(usuario, [{"id": 1, "cantidad": cantidad}])
+        cliente.enviar({"type": T_PAGO, "usuario": usuario})
+        return cliente.esperar(T_PAGO_OK)["id_pedido"]
+
+    def test_cancelar_pedido_devuelve_el_stock_y_avisa_al_cliente(self):
+        cliente = self._cliente("ana")
+        id_pedido = self._crear_pedido_pagado(cliente)
+        self._esperar_stock(1, 1)  # el pago NO devuelve el stock
+
+        ok, mensaje, pedido = self.servidor.cancelar_pedido(id_pedido)
+
+        self.assertTrue(ok, mensaje)
+        self.assertEqual(pedido["estado"], EstadoPedido.CANCELADO)
+        self._esperar_stock(1, 3)
+        aviso = cliente.buscar(
+            T_PEDIDO_ESTADO,
+            lambda m: (m.get("pedido") or {}).get("id_pedido") == id_pedido,
+        )
+        self.assertEqual(aviso["pedido"]["estado"], EstadoPedido.CANCELADO)
+
+    def test_no_se_puede_cancelar_despues_de_despachar(self):
+        cliente = self._cliente("ana")
+        id_pedido = self._crear_pedido_pagado(cliente, cantidad=1)
+        self._esperar_stock(1, 2)
+        self.assertTrue(self.servidor.avanzar_pedido(id_pedido)[0])
+        self.assertTrue(self.servidor.avanzar_pedido(id_pedido)[0])
+
+        ok, mensaje, pedido = self.servidor.cancelar_pedido(id_pedido)
+
+        self.assertFalse(ok)
+        self.assertIn("despachar", mensaje.lower())
+        self.assertEqual(pedido["estado"], EstadoPedido.DESPACHADO)
+        self._esperar_stock(1, 2)  # el stock no se devuelve
+
+    def test_cancelar_dos_veces_no_duplica_el_stock(self):
+        cliente = self._cliente("ana")
+        id_pedido = self._crear_pedido_pagado(cliente)
+        self._esperar_stock(1, 1)
+        self.assertTrue(self.servidor.cancelar_pedido(id_pedido)[0])
+        self._esperar_stock(1, 3)
+
+        ok, _mensaje, _pedido = self.servidor.cancelar_pedido(id_pedido)
+
+        self.assertFalse(ok)
+        self._esperar_stock(1, 3)
 
     def test_pagar_sin_carrito_avisa_error(self):
         cliente = self._cliente("ana")

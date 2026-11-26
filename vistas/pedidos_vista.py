@@ -5,7 +5,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 try:
     from vistas.estilos import (
         BG_DARK, DARK_CARD, GREEN, WHITE, BLACK, GRAY_TEXT, GRAY_BTN,
@@ -78,11 +78,12 @@ class PantallaPedidos(tk.Frame):
     _es_pantalla_pedidos = True
 
     def __init__(self, parent, obtener_pedidos, modo="cliente", on_avanzar=None,
-                 on_volver=None):
+                 on_volver=None, on_cancelar=None):
         super().__init__(parent, bg=BG_DARK)
         self.obtener_pedidos = obtener_pedidos
         self.modo = "admin" if modo == "admin" else "cliente"
         self.on_avanzar = on_avanzar
+        self.on_cancelar = on_cancelar
         self.on_volver = on_volver
         self._pedidos = []
         self._por_id = {}
@@ -134,6 +135,14 @@ class PantallaPedidos(tk.Frame):
                 command=self._avanzar,
             )
             self.btn_avanzar.pack(side="right", padx=10, ipady=5)
+
+        if self.modo == "admin" and self.on_cancelar:
+            self.btn_cancelar = tk.Button(
+                acciones, text="CANCELAR PEDIDO", font=FUENTE_NAV,
+                bg="#c0392b", fg=WHITE, relief="flat", bd=0, cursor="hand2",
+                command=self._cancelar,
+            )
+            self.btn_cancelar.pack(side="right", padx=10, ipady=5)
 
         cuerpo = tk.Frame(self, bg=BG_DARK)
         cuerpo.pack(fill="both", expand=True, padx=24, pady=(0, 20))
@@ -281,14 +290,19 @@ class PantallaPedidos(tk.Frame):
         return EstadoPedido.FLUJO[indice + 1]
 
     def _actualizar_boton(self, pedido):
-        if not hasattr(self, "btn_avanzar"):
-            return
-        siguiente = self._siguiente_estado(pedido)
-        if siguiente is None:
-            self.btn_avanzar.config(text="AVANZAR ESTADO", state="disabled")
-            return
-        self.btn_avanzar.config(text=f"AVANZAR A {siguiente.upper()}",
-                                state="normal")
+        if hasattr(self, "btn_avanzar"):
+            siguiente = self._siguiente_estado(pedido)
+            if siguiente is None:
+                self.btn_avanzar.config(text="AVANZAR ESTADO", state="disabled")
+            else:
+                self.btn_avanzar.config(text=f"AVANZAR A {siguiente.upper()}",
+                                        state="normal")
+        if hasattr(self, "btn_cancelar"):
+            estado = pedido.get("estado") if isinstance(pedido, dict) else None
+            self.btn_cancelar.config(
+                state="normal" if estado in EstadoPedido.CANCELABLES
+                else "disabled"
+            )
 
     def _avanzar(self):
         seleccion = self.tabla.selection()
@@ -311,6 +325,40 @@ class PantallaPedidos(tk.Frame):
             ok, mensaje = bool(resultado), ""
         self._avisar(mensaje or ("Pedido actualizado" if ok
                                  else "No se pudo actualizar"),
+                     "exito" if ok else "error")
+        self.refrescar()
+        if self.tabla.exists(id_pedido):
+            self.tabla.selection_set(id_pedido)
+
+    def _cancelar(self):
+        seleccion = self.tabla.selection()
+        if not seleccion:
+            self._avisar("Selecciona un pedido", "error")
+            return
+        id_pedido = str(seleccion[0])
+        pedido = self._por_id.get(id_pedido)
+        if pedido is None:
+            self._avisar("Selecciona un pedido", "error")
+            return
+        if pedido.get("estado") not in EstadoPedido.CANCELABLES:
+            self._avisar("Solo se puede cancelar antes de despachar", "error")
+            return
+        confirmado = messagebox.askyesno(
+            "Cancelar pedido",
+            f"¿Cancelar el pedido {id_pedido}?\n"
+            "Se devolverá el stock de sus productos al inventario.",
+            parent=self.winfo_toplevel(),
+        )
+        if not confirmado:
+            return
+        resultado = self.on_cancelar(id_pedido)
+        if isinstance(resultado, tuple):
+            ok = bool(resultado[0])
+            mensaje = resultado[1] if len(resultado) > 1 else ""
+        else:
+            ok, mensaje = bool(resultado), ""
+        self._avisar(mensaje or ("Pedido cancelado" if ok
+                                 else "No se pudo cancelar"),
                      "exito" if ok else "error")
         self.refrescar()
         if self.tabla.exists(id_pedido):
@@ -357,7 +405,8 @@ class PantallaPedidos(tk.Frame):
         self.txt_detalle.config(state="disabled")
 
 
-def abrir_ventana_pedidos(parent, obtener_pedidos, on_avanzar):
+def abrir_ventana_pedidos(parent, obtener_pedidos, on_avanzar,
+                          on_cancelar=None):
     try:
         root = parent.winfo_toplevel()
     except Exception:
@@ -367,7 +416,8 @@ def abrir_ventana_pedidos(parent, obtener_pedidos, on_avanzar):
     ventana.geometry("980x620")
     ventana.configure(bg=BG_DARK)
     pantalla = PantallaPedidos(ventana, obtener_pedidos, modo="admin",
-                               on_avanzar=on_avanzar)
+                               on_avanzar=on_avanzar,
+                               on_cancelar=on_cancelar)
     pantalla.pack(fill="both", expand=True)
     ventana.pantalla = pantalla
     try:

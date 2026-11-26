@@ -46,5 +46,21 @@
         "total": 154688.1,
         "estado": "En preparación",
         "fecha": "2026-11-24T13:28:08"
+    },
+    {
+        "id_pedido": "P-000004",
+        "id_venta": 35,
+        "cliente": "admin",
+        "items": [
+            {
+                "id": 1,
+                "nombre": "Mario Bros",
+                "precio": 12999000.0,
+                "cantidad": 1
+            }
+        ],
+        "total": 15468810.0,
+        "estado": "Cancelado",
+        "fecha": "2026-11-26T11:03:19"
     }
 ]
