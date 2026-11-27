@@ -74,7 +74,7 @@ class PantallaAdmin(tk.Frame):
                  on_tarifas_cambiaron=None, lista_deseos=None,
                  on_ver_pedidos=None, gestor_ofertas=None,
                  on_ofertas_cambiaron=None, obtener_tiempo_reserva=None,
-                 configurar_tiempo_reserva=None):
+                 configurar_tiempo_reserva=None, on_catalogo_cambiado=None):
         super().__init__(parent, bg=BG_DARK)
         self.inventario = inventario or Inventario()
         self.carritos = carritos if carritos is not None else {}
@@ -89,6 +89,7 @@ class PantallaAdmin(tk.Frame):
         self.on_ofertas_cambiaron = on_ofertas_cambiaron
         self.obtener_tiempo_reserva = obtener_tiempo_reserva
         self.configurar_tiempo_reserva = configurar_tiempo_reserva
+        self.on_catalogo_cambiado = on_catalogo_cambiado
         # La recibe desde main_gui para que el panel admin comparta la misma
         # lista de deseos del servidor, aunque todavía no la muestre en tabla.
         self.lista_deseos = lista_deseos
@@ -1010,6 +1011,8 @@ class PantallaAdmin(tk.Frame):
         except ValueError as e:
             self.label_error.config(text=str(e))
             return
+        if self.on_catalogo_cambiado is not None:
+            self.on_catalogo_cambiado()
         self._refrescar_tabla()
         self._limpiar_formulario()
 

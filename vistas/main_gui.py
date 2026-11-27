@@ -257,10 +257,16 @@ class RetroVaultApp:
                             "mensaje": texto, "id_producto": pid})
             self._catalogo_avisos_local = actual
         if self.usuario_actual:
-            for aviso in self.lista_deseos.avisos_pendientes(self.usuario_actual):
-                self._mostrar_notificacion(aviso)
-                self.lista_deseos.confirmar_aviso(self.usuario_actual, aviso["id_aviso"])
+            self._entregar_avisos_pendientes_locales()
         self.root.after(500, self._revisar_avisos_locales)
+
+    def _entregar_avisos_pendientes_locales(self):
+        """Muestra avisos pendientes al usar ADMIN y cliente en la misma app."""
+        if self.conexion is not None or not self.usuario_actual:
+            return
+        for aviso in self.lista_deseos.avisos_pendientes(self.usuario_actual):
+            self._mostrar_notificacion(aviso)
+            self.lista_deseos.confirmar_aviso(self.usuario_actual, aviso["id_aviso"])
 
     # ------------------------------------------------------------------
     # AVISOS POR SOCKET
@@ -1201,6 +1207,8 @@ class RetroVaultApp:
             gestor_tarifas=self.gestor_tarifas,
             on_tarifas_cambiaron=(self.servidor.difundir_tarifas if self.servidor is not None else None),
             on_ver_pedidos=self._abrir_pedidos_admin,
+            on_catalogo_cambiado=(self.servidor.difundir_inventario
+                                  if self.servidor is not None else None),
         )
         pantalla.pack(fill="both", expand=True)
 
@@ -1256,6 +1264,7 @@ class RetroVaultApp:
             self.mostrar_carrito()
         else:
             self.mostrar_principal()
+        self.root.after_idle(self._entregar_avisos_pendientes_locales)
         self._actualizar_visibilidad_admin()
 
     def _al_registrarse(self, datos_usuario):
@@ -1284,6 +1293,7 @@ class RetroVaultApp:
             self.mostrar_carrito()
         else:
             self.mostrar_principal()
+        self.root.after_idle(self._entregar_avisos_pendientes_locales)
         self._actualizar_visibilidad_admin()
 
 
