@@ -234,10 +234,6 @@ class PantallaPrincipal(tk.Frame):
         link_categorias.pack(side="left", padx=8)
         link_categorias.bind("<Button-1>", lambda e: self._ir_explorar(limpio=True))
 
-        link_perfil = self._link_nav(nav_links, "MI PERFIL")
-        link_perfil.pack(side="left", padx=8)
-        link_perfil.bind("<Button-1>", lambda e: self._abrir_perfil())
-
         # ADMIN se crea siempre, pero solo se empaqueta con sesión admin.
         self._link_admin = self._link_nav(nav_links, "ADMIN")
         self._link_admin.bind("<Button-1>", lambda e: self._ir_admin())
@@ -280,41 +276,21 @@ class PantallaPrincipal(tk.Frame):
         lbl_carrito.pack(side="left", padx=4)
         lbl_carrito.bind("<Button-1>", lambda e: self._abrir_carrito())
 
-        if self.usuario_actual is not None and self.on_ver_pedidos is not None:
-            pedidos = tk.Label(iconos, text="MIS PEDIDOS", font=FUENTE_NAV,
-                               bg=GRAY_BTN, fg=WHITE, padx=10, pady=6,
-                               cursor="hand2")
-            pedidos.pack(side="left", padx=4)
-            pedidos.bind("<Button-1>", lambda e: self.on_ver_pedidos())
-
-        if self.usuario_actual is not None and self.on_ver_deseos is not None:
-            deseos = tk.Label(iconos, text="♡ DESEOS", font=FUENTE_NAV,
-                              bg=GRAY_BTN, fg=WHITE, padx=10, pady=6, cursor="hand2")
-            deseos.pack(side="left", padx=4)
-            deseos.bind("<Button-1>", lambda e: self.on_ver_deseos())
-
         if self.usuario_actual is not None and self.on_ver_avisos is not None:
             avisos = tk.Label(iconos, text="NOTIFICACIONES", font=FUENTE_NAV,
                               bg=GRAY_BTN, fg=WHITE, padx=10, pady=6, cursor="hand2")
             avisos.pack(side="left", padx=4)
             avisos.bind("<Button-1>", lambda e: self.on_ver_avisos())
 
-        nombre = self.usuario_actual or "Invitado"
-        lbl_user = tk.Label(
-            iconos, text=f"👤 {nombre}", font=FUENTE_NAV,
-            bg=BG_DARK, fg=GRAY_TEXT, padx=8, pady=6,
-        )
-        lbl_user.pack(side="left", padx=4)
-
         lbl_salir = tk.Label(
-            iconos, text="INICIAR SESIÓN" if self.usuario_actual is None else "SALIR", font=FUENTE_NAV,
+            iconos, text="INICIAR SESIÓN" if self.usuario_actual is None else "MI PERFIL", font=FUENTE_NAV,
             bg=GRAY_BTN, fg=WHITE, padx=12, pady=6, cursor="hand2"
         )
         lbl_salir.pack(side="left", padx=4)
         if self.usuario_actual is None:
             lbl_salir.bind("<Button-1>", lambda e: self._ir_login())
         else:
-            lbl_salir.bind("<Button-1>", lambda e: self._cerrar_sesion())
+            lbl_salir.bind("<Button-1>", lambda e: self._abrir_perfil())
 
         # Conserva tamaños naturales y orden; baja los accesos solo si no caben.
         grupos = list(navbar.winfo_children())

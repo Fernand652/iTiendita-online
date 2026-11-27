@@ -388,7 +388,7 @@ class RetroVaultApp:
                     _toast(self.root, mensaje["mensaje"], tipo="exito" if mensaje.get("ok") else "error")
             self._refrescar_admin()
             for vista in self.contenedor.winfo_children():
-                if isinstance(vista, PantallaListaDeseos):
+                if isinstance(vista, (PantallaListaDeseos, PantallaMiPerfil)):
                     vista.refrescar()
         elif tipo == T_NOTIFICACION:
             self._mostrar_notificacion(mensaje)
@@ -520,7 +520,7 @@ class RetroVaultApp:
     def _refrescar_pedidos(self):
         """Redibuja la pantalla de pedidos que esté visible, si hay una."""
         for hijo in self.contenedor.winfo_children():
-            if getattr(hijo, "_es_pantalla_pedidos", False):
+            if getattr(hijo, "_es_pantalla_pedidos", False) or isinstance(hijo, PantallaMiPerfil):
                 try:
                     hijo.refrescar()
                 except Exception:
@@ -1038,6 +1038,8 @@ class RetroVaultApp:
 
     def mostrar_mi_perfil(self):
         """Perfil del usuario activo: datos, pedidos y lista de deseados."""
+        if not self._requiere_sesion():
+            return
         self._limpiar_contenedor()
         pantalla = PantallaMiPerfil(
             self.contenedor,
@@ -1051,6 +1053,7 @@ class RetroVaultApp:
             on_quitar=self._quitar_deseo,
             on_ver_producto=self._mostrar_detalle_producto,
             on_agregar_carro=self._agregar_al_carrito,
+            on_cerrar_sesion=self.cerrar_sesion,
         )
         pantalla.pack(fill="both", expand=True)
 

@@ -1,8 +1,6 @@
 {
     "admin": {
-        "favoritos": [
-            1
-        ],
+        "favoritos": [],
         "suscripciones": [
             1,
             111,

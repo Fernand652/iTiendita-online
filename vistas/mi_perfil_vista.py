@@ -48,7 +48,7 @@ class PantallaMiPerfil(tk.Frame):
     def __init__(self, parent, usuario=None, gestor_usuarios=None,
                  lista_deseos=None, inventario=None, obtener_pedidos=None,
                  on_volver=None, on_ir_login=None, on_quitar=None,
-                 on_ver_producto=None, on_agregar_carro=None):
+                 on_ver_producto=None, on_agregar_carro=None, on_cerrar_sesion=None):
         super().__init__(parent, bg=BG_DARK)
         self.usuario = usuario
         self.gestor_usuarios = gestor_usuarios
@@ -60,6 +60,7 @@ class PantallaMiPerfil(tk.Frame):
         self.on_quitar = on_quitar
         self.on_ver_producto = on_ver_producto
         self.on_agregar_carro = on_agregar_carro
+        self.on_cerrar_sesion = on_cerrar_sesion
         self._crear_ui()
         self.refrescar()
 
@@ -74,6 +75,13 @@ class PantallaMiPerfil(tk.Frame):
             relief="flat", bd=0, cursor="hand2", padx=12, pady=6,
             command=self._volver,
         ).pack(side="right")
+        if self.usuario and self.on_cerrar_sesion:
+            tk.Button(
+                barra, text="CERRAR SESIÓN", font=FUENTE_NAV,
+                bg=GRAY_BTN, fg=WHITE, relief="flat", bd=0,
+                cursor="hand2", padx=12, pady=6,
+                command=self.on_cerrar_sesion,
+            ).pack(side="right", padx=8)
 
         cuerpo = tk.Frame(self, bg=BG_DARK)
         cuerpo.pack(fill="both", expand=True, padx=24, pady=(0, 20))
@@ -99,12 +107,14 @@ class PantallaMiPerfil(tk.Frame):
         )
 
     def refrescar(self):
+        posicion = self._lienzo.yview()[0]
         for widget in self._contenido.winfo_children():
             widget.destroy()
         self._seccion_datos()
         self._seccion_pedidos()
         self._seccion_deseos()
-        self._lienzo.yview_moveto(0)
+        self._contenido.update_idletasks()
+        self._lienzo.yview_moveto(posicion)
 
     def _seccion(self, titulo):
         marco = tk.Frame(self._contenido, bg=DARK_CARD, padx=18, pady=14)
@@ -178,7 +188,7 @@ class PantallaMiPerfil(tk.Frame):
         return pedidos
 
     def _seccion_pedidos(self):
-        marco = self._seccion("PEDIDOS REALIZADOS")
+        marco = self._seccion("MIS PEDIDOS")
         pedidos = self._pedidos_del_usuario()
         if not pedidos:
             if self.usuario:
@@ -249,7 +259,7 @@ class PantallaMiPerfil(tk.Frame):
         return deseados, suscripciones
 
     def _seccion_deseos(self):
-        marco = self._seccion("LISTA DE DESEADOS")
+        marco = self._seccion("MI LISTA DE DESEOS")
         if not self.usuario:
             self._mensaje(marco, "Inicia sesión para ver tu lista de deseados.")
             return
@@ -304,6 +314,25 @@ class PantallaMiPerfil(tk.Frame):
                     cursor="hand2", padx=8, pady=3,
                     command=lambda p=producto: self._agregar(p),
                 ).pack(side="left")
+
+            # Mantener las acciones accesibles también en ventanas pequeñas.
+            botones = acciones.winfo_children()
+            for boton in botones:
+                boton.pack_forget()
+
+            def distribuir(evento, botones=botones):
+                fila = columna = ocupado = 0
+                for boton in botones:
+                    ancho = boton.winfo_reqwidth() + 6
+                    if ocupado and ocupado + ancho > evento.width:
+                        fila, columna, ocupado = fila + 1, 0, 0
+                    boton.grid(row=fila, column=columna, sticky="w", padx=(0, 6), pady=3)
+                    columna += 1
+                    ocupado += ancho
+
+            acciones.bind("<Configure>", distribuir)
+            for columna, boton in enumerate(botones):
+                boton.grid(row=0, column=columna, sticky="w", padx=(0, 6), pady=3)
 
     def _volver(self):
         if self.on_volver is not None:
