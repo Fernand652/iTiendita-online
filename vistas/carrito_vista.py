@@ -542,12 +542,7 @@ class carrito(tk.Frame):
     def _reiniciar_temporizador(self):
         """Reinicia la cuenta regresiva de 5 minutos y el aviso de 1 minuto."""
         if not self.lista_actual:
-            if self._timer_id is not None:
-                try:
-                    self.after_cancel(self._timer_id)
-                except Exception:
-                    pass
-                self._timer_id = None
+            self._detener_temporizador()
             self.tiempo_restante_segundos = 300
             self._aviso_un_minuto_mostrado = False
             self.lbl_timer.config(text="--:--")
@@ -557,18 +552,20 @@ class carrito(tk.Frame):
         self._aviso_un_minuto_mostrado = False
         self._iniciar_cuenta_regresiva()
 
+    def sincronizar_reserva_activa(self):
+        """Reinicia la cuenta regresiva cuando el servidor actualiza el carrito activo."""
+        if self.lista_actual:
+            self._reiniciar_temporizador()
+        else:
+            self._detener_temporizador()
+            self.lbl_timer.config(text="--:--")
 
     def marcar_expirado_desde_servidor(self, mensaje="Tu carrito expiró por inactividad y se liberó el stock."):
         """Detiene el reloj y limpia la vista cuando el servidor expira el carrito."""
-        if self._timer_id is not None:
-            try:
-                self.after_cancel(self._timer_id)
-            except Exception:
-                pass
-            self._timer_id = None
-
+        self._detener_temporizador()
         self.tiempo_restante_segundos = 0
         self._aviso_un_minuto_mostrado = False
+        self.cupon_activo = None
         self.lista_actual = []
 
         for widget in self.col_izquierda.winfo_children():

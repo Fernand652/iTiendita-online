@@ -400,12 +400,13 @@ class RetroVaultApp:
             if producto is not None:
                 producto.stock = mensaje.get("stock", producto.stock)
             self._refrescar_todas()
+        
         elif tipo == T_CARRITO_ESTADO:
-            # El servidor dijo cómo quedó el carrito de verdad (no había
-            # stock para todo lo que pedimos). Ajustamos la pantalla.
+            
             if mensaje.get("expirado"):
                 motivo = mensaje.get("mensaje") or "Tu carrito expiró por inactividad y se liberó el stock."
                 self._aplicar_carrito_del_servidor([])
+                self.carritos[self._id_remoto] = []
                 if self._pantalla_carrito is not None:
                     try:
                         self._pantalla_carrito.marcar_expirado_desde_servidor(motivo)
@@ -414,6 +415,12 @@ class RetroVaultApp:
                 _toast(self.root, motivo, tipo="error")
                 return
             self._aplicar_carrito_del_servidor(mensaje.get("items") or [])
+            if self._pantalla_carrito is not None:
+                try:
+                    self._pantalla_carrito.sincronizar_reserva_activa()
+                except Exception:
+                    pass
+
         elif tipo == T_PAGO_OK:
             if self._pantalla_carrito is not None:
                 self._pantalla_carrito.resolver_pago(True, "Compra confirmada por el servidor")
