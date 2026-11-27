@@ -9,6 +9,25 @@ Requisitos: se debe de tener una version de python 3.10+ con tkinter
    o python -m vistas.main_gui
 3. Login inicial: El usuario(admin) es nombre: admin, clave: 1234.
 
+Asistente con Gemini (solo en el ADMIN)
+- La API key se lee de la variable de entorno GEMINI_API_KEY (o GOOGLE_API_KEY).
+  Si no está definida, se usa la key de respaldo en modelos/api_gemini.py.
+  En PowerShell, antes de correr el ADMIN:
+    $env:GEMINI_API_KEY = "PEGAR_AQUÍ_LA_KEY_NUEVA"
+  (para no escribirla cada vez: `setx GEMINI_API_KEY "PEGAR_AQUÍ_LA_KEY_NUEVA"`
+   y abrir una terminal nueva).
+- Si la key se vence, se renombra en AI Studio o se copia mal, el chat responde
+  "API key invalida o sin permisos". Genera una key nueva en
+  https://aistudio.google.com/apikey (sin renombrarla) con acceso a Gemini API
+  y vuelve a intentar.
+- Para diagnosticar sin abrir la interfaz, desde la raíz:
+    python modelos/api_gemini.py
+  Imprime el HTTP status y el motivo del error de Google (nunca imprime la key).
+- Modelo por defecto: `gemini-3-flash-preview` (el más antiguo que aún funciona
+  y con poca demanda; `gemini-2.5-*` ya da 404 para cuentas nuevas y
+  `gemini-3.1-flash-lite` suele dar 503 por alta demanda). Como es preview,
+  si Google lo retira se puede cambiar con GEMINI_MODELO sin tocar el código.
+
 Cómo correr los tests
 
 Desde la raíz:
