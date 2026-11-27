@@ -441,7 +441,20 @@ class PantallaChat(tk.Frame):
                 encontrados.append(producto)
         return encontrados
 
+    @staticmethod
+    def _sin_stock(producto):
+        # mismo criterio del catalogo: stock 0 = se muestra pero no se agrega
+        try:
+            return int(getattr(producto, "stock", 0) or 0) <= 0
+        except (TypeError, ValueError):
+            return False
+
     def _agregar_desde_respuesta(self, producto):
+        # Defensa doble: aunque el boton se creara con stock viejo, nunca se
+        # reserva una unidad que no existe.
+        if self._sin_stock(producto):
+            _toast(self, f"No hay stock de {producto.nombre}", tipo="error")
+            return
         if self.on_agregar_carro is None:
             return
         ok, mensaje = self.on_agregar_carro(producto)
@@ -455,6 +468,11 @@ class PantallaChat(tk.Frame):
             return
         self.chat_area.config(state=tk.NORMAL)
         for producto in productos:
+            if self._sin_stock(producto):
+                # Sin existencias NO se ofrece el boton de agregar.
+                # El producto seguirá visible en el texto del asistente.
+                self.chat_area.insert(tk.END, f"  (Sin stock: {producto.nombre})\n")
+                continue
             boton = tk.Button(
                 self.chat_area,
                 text=f"+ AGREGAR: {producto.nombre}",

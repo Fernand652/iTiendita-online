@@ -421,6 +421,8 @@ class RetroVaultApp:
                 _toast(self.root, motivo, tipo="error")
                 return
             self._aplicar_carrito_del_servidor(mensaje.get("items") or [])
+            if mensaje.get("mensaje"):
+                _toast(self.root, mensaje["mensaje"], tipo="error")
             if self._pantalla_carrito is not None:
                 try:
                     self._pantalla_carrito.sincronizar_reserva_activa()

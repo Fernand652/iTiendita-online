@@ -25,7 +25,9 @@ URL = f"{BASE_URL}/{MODELO}:generateContent"
 
 
 def armar_catalogo(productos):
-    # convierte los productos en lineas de texto para mandarselas a gemini
+    # convierte los productos en lineas de texto para mandarselas a gemini.
+    # Se muestran TODOS, incluso los que tienen stock 0: el asistente puede
+    # nombrarlos, pero el carrito no los reserva (lo bloquea el servidor).
     lineas = []
     for p in productos or []:
         if isinstance(p, dict):
@@ -54,7 +56,9 @@ def armar_instruccion(productos):
     return (
         "Eres el asistente de RetroVault, una tienda de videojuegos y consolas retro. "
         "Responde breve y amable y solo sobre los productos de la tienda. "
-        "Usa SOLO este catalogo (nombre, categoria, precio, stock y descripcion):\n"
+        "Usa SOLO este catalogo (nombre, categoria, precio, stock y descripcion). "
+        "Puedes mostrar productos con stock 0, pero si el cliente quiere agregar "
+        "uno, avisa de que no hay existencias.\n"
         + armar_catalogo(productos)
     )
 

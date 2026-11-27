@@ -355,6 +355,19 @@ class TestServidorCarritos(unittest.TestCase):
         self._esperar_stock(1, 0)
         self.assertEqual(self.servidor.carritos["ana"], {1: 3})
 
+    def test_sin_stock_no_se_agrega_y_el_servidor_lo_avisa(self):
+        """Stock 0: no se reserva nada y el cliente recibe el motivo."""
+        cliente = self._cliente("ana")
+        with self.servidor._lock:
+            self.inventario.buscar_por_id(2).stock = 0
+        cliente.mandar_carrito("ana", [{"id": 2, "cantidad": 1}])
+        correccion = cliente.esperar(T_CARRITO_ESTADO)
+        self.assertEqual(correccion["items"], [])
+        self.assertEqual(correccion["sin_stock"], ["Producto B"])
+        self.assertIn("No hay stock", correccion["mensaje"])
+        self.assertEqual(self._stock(2), 0)
+        self.assertEqual(self.servidor.carritos.get("ana", {}), {})
+
     def test_quitar_un_producto_devuelve_el_stock(self):
         cliente = self._cliente("ana")
         cliente.mandar_carrito("ana", [{"id": 1, "cantidad": 2}])

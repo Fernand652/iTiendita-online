@@ -450,6 +450,13 @@ class ServidorCarritos(threading.Thread):
         deseado = normalizar_items(mensaje.get("items") or [])
         with self._lock:
             self.carritos[usuario], tocados = self._reconciliar(usuario, deseado)
+            # Lo que el cliente pidió y NO se pudo reservar es sin stock.
+            sin_stock = []
+            for id_producto, cantidad in deseado.items():
+                if cantidad > self.carritos[usuario].get(id_producto, 0):
+                    producto = self.inventario.buscar_por_id(id_producto)
+                    sin_stock.append(producto.nombre if producto
+                                     else f"Producto {id_producto}")
         if self.carritos.get(usuario):
             self.carritos_timestamps[usuario] = time.time()
         else:
@@ -462,10 +469,16 @@ class ServidorCarritos(threading.Thread):
         # Si el carrito que quedó NO es el que el cliente cree, se lo
         # corregimos (mensaje autoritativo).
         if self.carritos[usuario] != deseado:
-            self._enviar(conexion, {
+            correccion = {
                 "type": T_CARRITO_ESTADO,
                 "items": items_a_lista(self.carritos[usuario]),
-            })
+            }
+            if sin_stock:
+                # El cliente debe ENTERARSE de que no hay stock, no solo ver
+                # que su carrito cambió silenciosamente.
+                correccion["mensaje"] = "No hay stock de " + ", ".join(sin_stock)
+                correccion["sin_stock"] = sin_stock
+            self._enviar(conexion, correccion)
 
         self._difundir_carritos()
 
